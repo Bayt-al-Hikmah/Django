@@ -1,0 +1,14 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>App 4 - Static Files</title>
+    {% load static %}
+    <link rel="stylesheet" href="{% static 'app4/css/style.css' %}">
+</head>
+<body>
+    <h1>Welcome to App 4</h1>
+    <p>This page demonstrates how to use static files in Django.</p>
+    <img src="{% static 'app4/images/logo.png' %}" alt="App 4 Logo">
+</body>
+</html>

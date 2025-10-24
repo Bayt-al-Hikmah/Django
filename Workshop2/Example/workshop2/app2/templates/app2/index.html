@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>App 2</title>
+</head>
+<body>
+    {% if role == 'admin' %}
+        <h1>Welcome, Admin!</h1>
+        <p>You have full access to the system.</p>
+    {% elif role == 'editor' %}
+        <h1>Welcome, Editor!</h1>
+        <p>You can edit and manage content.</p>
+    {% elif role == 'viewer' %}
+        <h1>Welcome, Viewer!</h1>
+        <p>You can browse and read the available content.</p>
+    {% else %}
+        <h1>Welcome, Guest!</h1>
+        <p>Your role is not recognized. Please log in or contact the administrator.</p>
+    {% endif %}
+</body>
+</html>

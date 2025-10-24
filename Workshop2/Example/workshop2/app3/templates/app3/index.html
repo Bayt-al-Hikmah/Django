@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>App 3 - Using Loops</title>
+</head>
+<body>
+    <h1>Available Fruits</h1>
+    <ul>
+        {% for fruit in fruits %}
+            <li>{{ fruit }}</li>
+        {% empty %}
+            <li>No fruits available at the moment.</li>
+        {% endfor %}
+    </ul>
+
+    <p>Total fruits: {{ fruits|length }}</p>
+</body>
+</html>
