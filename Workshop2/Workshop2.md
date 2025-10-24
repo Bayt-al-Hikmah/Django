@@ -398,7 +398,7 @@ urlpatterns = [
     path('app4/', include('app4.urls')), 
 ]
 ```
-By using the **`include()`** function, we’re telling Django to look for additional URL patterns inside the **`app4`** app. 
+By using the **`include()`** function, we’re telling Django to look for additional URL patterns inside the **`app4`** app.  
 Finally, we add **`app4`** to our **`INSTALLED_APPS`** section inside **`settings.py`**. This step ensures that Django recognizes the app and knows where to find its templates and static files.
 ## Handling User Input with Forms
 So far, our Django apps have focused on **displaying data** to users rendering templates, managing static files, and serving dynamic content. However, real-world web applications do much more than that. They also need to receive data from users, process it, and often save it or use it to produce a result.  
@@ -470,7 +470,6 @@ When the user submits the form, the data will be sent to the server using the **
                 <li>
                     <strong>{{ item.name }}</strong> ({{ item.email }})<br>
                     {{ item.message }}<br>
-                    <small>Submitted on {{ item.created_at }}</small>
                 </li>
                 <hr>
             {% empty %}
@@ -619,7 +618,7 @@ def submit_feedback(request):
         form = FeedbackForm(request.POST)
         if form.is_valid():
             feedbacks.append(form.cleaned_data)
-            return redirect(reverse('feedback'))
+            return redirect(reverse('feedbacks'))
     else:
         form = FeedbackForm()
     

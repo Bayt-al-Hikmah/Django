@@ -35,6 +35,7 @@ INSTALLED_APPS = [
     "app2",
     "app3",
     "app4",
+    'feedback',
     "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
