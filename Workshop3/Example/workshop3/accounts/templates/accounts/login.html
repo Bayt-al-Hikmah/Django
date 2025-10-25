@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Login</title>
+    {% load static %}
+    <link rel="stylesheet" href="{% static 'todo_list/style.css' %}">
+</head>
+<body>
+    <div class="container">
+        <h1>Login</h1>
+        <form method="POST">
+            {% csrf_token %}
+            {{ form.as_div }}
+            <button type="submit">Login</button>
+        </form>
+        <p>Don’t have an account? <a href="{% url 'register' %}">Register here</a></p>
+    </div>
+</body>
+</html>

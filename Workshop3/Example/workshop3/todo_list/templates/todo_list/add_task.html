@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Add New Task</title>
+    {% load static %}
+    <link rel="stylesheet" href="{% static 'todo_list/style.css' %}">
+</head>
+<body>
+    <div class="container">
+        <h1>Add a New Task</h1>
+
+        <form method="POST">
+            {% csrf_token %}
+            {{ form.as_div }}
+            <button type="submit" class="btn">Save Task</button>
+        </form>
+
+        <a href="{% url 'task_list' %}" class="btn back">Back to List</a>
+    </div>
+</body>
+</html>

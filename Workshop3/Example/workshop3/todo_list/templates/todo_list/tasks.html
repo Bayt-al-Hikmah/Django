@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>My To-Do List</title>
+    {% load static %}
+    <link rel="stylesheet" href="{% static 'todo_list/style.css' %}">
+</head>
+<body>
+    <div class="container">
+        <h1>My To-Do List</h1>
+        <a href="{% url 'add_task' %}" class="btn">Add New Task</a>
+        
+ 
+        <ul class="task-list">
+            {% for task in tasks %}
+                <li class="{% if task.status %}done{% endif %}">
+                    <strong>{{ task.title }}</strong><br>
+                    {{ task.description }}
+                </li>
+            {% empty %}
+                <li>No tasks added yet. Start by creating one!</li>
+            {% endfor %}
+        </ul>
+
+    </div>
+</body>
+</html>
