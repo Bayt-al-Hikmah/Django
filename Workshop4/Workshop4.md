@@ -2,6 +2,7 @@
 
 - Upload and manage files efficiently
 - Work with settings files and project configuration
+- Understand middleware and learn how to create custom middleware
 - Implement testing and unit tests to ensure code quality
 ## Upload and Manage Files Efficiently
 ### Introduction
