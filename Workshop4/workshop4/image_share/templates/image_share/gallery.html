@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Photo Gallery</title>
+    {% load static %}
+    <link rel="stylesheet" href="{% static 'image_share/css/style.css' %}">
+</head>
+<body>
+    <h1>Photo Gallery</h1>
+    <a href="{% url 'upload_photo' %}" class="btn">Upload New Photo</a>
+
+    <div class="gallery">
+        {% for photo in photos %}
+            <div class="photo-card">
+                <img src="{{ photo.image.url }}" alt="{{ photo.title }}">
+                <p>{{ photo.title }}</p>
+                <small>Uploaded at: {{ photo.uploaded_at|date:"Y-m-d H:i" }}</small>
+            </div>
+        {% empty %}
+            <p>No photos uploaded yet.</p>
+        {% endfor %}
+    </div>
+</body>
+</html>
