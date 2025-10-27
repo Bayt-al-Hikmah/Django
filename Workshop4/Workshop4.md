@@ -694,3 +694,225 @@ MIDDLEWARE = [
 ```
 
 ## Implement Testing and Unit Tests
+Testing is a crucial part of software development that ensures our code behaves as expected, catches bugs early, and maintains reliability as our project evolves. In Django, testing helps verify that our views, models, forms, and other components work correctly. We'll start by discussing manual verification and error handling, then move into automated testing with unit tests, and finally explore advanced browser-based testing using tools like Selenium.
+### Testing Our Programs and Errors
+Before diving into automated tests, it's important to manually verify our code and handle common errors. This hands-on approach helps us understand issues quickly during development.
+#### Verifying and Fixing by Ourselves
+Manual testing involves running our application and checking its behavior step by step. Start by using Django's development server (python manage.py runserver) and interact with your app through a browser or tools like Postman for API endpoints.  
+**Steps for Manual Verification**:
+- Test core functionalities: For example, in our image-sharing app, upload a photo, check if it appears in the gallery, and verify the image URL works.
+- Simulate user inputs: Try valid and invalid data (e.g., uploading a non-image file to see if validation fails gracefully).
+- Check edge cases: What happens with large files, empty titles, or concurrent uploads?
+- Use Django's debug mode: With ``DEBUG = True`` in ``settings.py`^, Django shows detailed error pages with stack traces, helping you pinpoint issues like missing imports or template errors.
+
+If you encounter bugs, fix them iteratively:
+- Read error messages carefully they often point to the exact line of code.
+- Use `print()` statements or Django's logging to inspect variables.
+- Restart the server after changes and retest.
+
+While manual testing is quick for small changes, it's error-prone and time-consuming for larger projects. That's where handling common errors and automated testing come in.
+#### Handling Common Errors
+Django provides built-in support for graceful error handling, allowing us to customize responses for common HTTP errors like 404 (Page Not Found) or 500 (Server Error). This improves user experience by showing friendly pages instead of raw errors.   
+To enable custom error pages, we set ``DEBUG = False`` in ``settings.py`` (for production-like testing), then create templates for each error code in your project's central templates/ folder (or app-specific if preferred).   
+
+**Custom 404 Page**:    
+Create templates/404.html:
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<title>Page Not Found</title>
+</head>
+<body>
+	<h1>404 - Page Not Found</h1>
+	<p>Sorry, the page you're looking for doesn't exist.</p>
+	<a href="{% url 'image_share:gallery' %}">Back to Gallery</a>
+</body>
+</html>
+```
+**Custom 500 Page**:   
+Create templates/500.html:
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<title>Server Error</title>
+</head>
+<body>
+	<h1>500 - Server Error</h1>
+	<p>Oops! Something went wrong on our end. Please try again later.</p>
+	<a href="{% url 'image_share:gallery' %}">Back to Gallery</a>
+</body>
+</html>
+```
+To activate these, add handler views in your project's urls.py:
+```python
+# workshop4/urls.py
+from django.conf import settings
+from django.conf.urls.static import static
+from django.contrib import admin
+from django.urls import path, include
+
+handler404 = 'django.views.defaults.page_not_found'
+handler500 = 'django.views.defaults.server_error'
+
+urlpatterns = [
+    path('admin/', admin.site.urls),
+    path('', include('image_share.urls')),
+]
+
+if settings.DEBUG:
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+```
+`handler404` defines the view Django will use when a requested page or resource doesn’t exist (for example, when visiting `/nonexistent/`). Here, it uses Django’s built-in view `django.views.defaults.page_not_found`, which automatically looks for a template named **`404.html`** in our templates directory. If it finds that file, Django will render it as the “Page Not Found” response.    
+`handler500` defines the view Django will use when a server-side error occurs (such as an unhandled exception in your code). It uses Django’s default view `django.views.defaults.server_error`, which looks for a **`500.html`** template to display whenever an internal server error happens.    
+We can also fully customize these error-handling functions to add extra context or logic for example, logging the error or showing user-friendly messages based on the request.
+```python
+from django.shortcuts import render
+
+def custom_404(request, exception):
+    return render(request, '404.html', {'error_message': 'The page you are looking for was not found.'}, status=404)
+
+def custom_500(request):
+    return render(request, '500.html', {'error_message': 'Something went wrong on our end. Please try again later.'}, status=500)
+
+handler404 = 'workshop4.urls.custom_404'
+handler500 = 'workshop4.urls.custom_500'
+```
+Now, our `404.html` and `500.html` templates can use the variables passed from these functions (like `{{ error_message }}`), giving us full flexibility to design and personalize our error pages.
+### The Need for Automated Testing
+Even after manual fixes and error handling, we still need to ensure our apps work as expected over time. Bugs can creep in from code changes, and in group projects, one person's commit might break another's feature. Automated tests run quickly and repeatedly, catching issues early and ensuring the project remains stable.  
+Django's testing framework, built on Python's unittest module, allows us to write tests that simulate requests, check database interactions, and verify outputs. This is essential for regression testing ensuring new changes don't break existing functionality.
+### Unit Tests in Django
+Unit tests focus on small, isolated parts of our code (e.g., a single function or model method). Django provides a tests.py file in each app where we can write these tests. It uses an in-memory test database to keep tests fast and isolated from your real data.
+#### How to Write and Run Unit Tests
+1. **Setup**: In image_share/tests.py, import necessary modules and use Django's TestCase class.
+2. **Writing Tests**: Each test method starts with test_ and uses assertions like self.assertEqual() to check expected vs. actual results.
+
+Example for testing our Photo model and views:
+```python
+# image_share/tests.py
+from django.test import TestCase, Client
+from django.urls import reverse
+from .models import Photo
+from .forms import PhotoForm
+
+class PhotoModelTest(TestCase):
+    def test_photo_creation(self):
+        photo = Photo.objects.create(title="Test Photo")
+        self.assertEqual(photo.title, "Test Photo")
+        self.assertTrue(photo.uploaded_at)  # Check auto_now_add works
+
+class PhotoFormTest(TestCase):
+    def test_valid_form(self):
+        data = {'title': 'Valid Title'}
+        form = PhotoForm(data=data)
+        self.assertTrue(form.is_valid())
+
+    def test_invalid_form(self):
+        data = {'title': ''}  # Empty title should be invalid if required
+        form = PhotoForm(data=data)
+        self.assertFalse(form.is_valid())
+
+class GalleryViewTest(TestCase):
+    def setUp(self):
+        self.client = Client()  # Simulates a browser
+        self.photo = Photo.objects.create(title="Test Photo")
+
+    def test_gallery_view(self):
+        url = reverse('image_share:gallery')
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Test Photo")  # Check content
+```
+Here we made write simple unit tests to verify that our models, forms, and views work as expected.   
+**`setUp()`**: This method runs automatically before each test. It prepares any data or objects needed for testing for example, creating a sample `Photo` object or initializing a test client that simulates a web browser.    
+**`Client`**: The Django test `Client` acts like a lightweight web browser used for testing. It lets us send simulated HTTP requests (`GET`, `POST`, etc.) to our Django application **without running a real server**. This helps verify how views respond to different requests. For example,
+```python
+response = self.client.get(url)
+```
+sends a GET request to a page, and we can then check the response status or contents (like verifying it contains specific text).    
+**Assertions**: Inside each test, we use special methods like `assertEqual`, `assertTrue`, and `assertContains` to check whether the code behaves as expected.
+- `assertEqual(a, b)` verifies that two values are equal.
+- `assertTrue(x)` checks that a condition is `True`.
+- `assertContains(response, text)` ensures that the given text appears in the HTTP response.
+
+**Running Tests**: To run the test we use the command:
+```shell
+python manage.py test  # Runs all tests in the project
+```
+If we want that target a specific app:
+```shell
+python manage.py test image_share
+```
+Django will report passes, failures, or errors. Aim for high test coverage to catch issues automatically.
+### Advanced Testing with Selenium
+For more comprehensive testing, especially user interactions (e.g., clicking buttons, filling forms), use Selenium. It automates real browsers to simulate user behavior, ensuring the app works end-to-end.
+#### Setting Up Selenium
+We first install Selenium and a webdriver (e.g., for Chrome):
+```shell
+pip install selenium
+# Download chromedriver from https://chromedriver.chromium.org/ and add to PATH
+```
+After that we use Django's ``StaticLiveServerTestCase`` this special class automatically runs a temporary server instance at a random port.  We can access it via `self.live_server_url`.
+**Example**
+```python
+from django.contrib.staticfiles.testing import StaticLiveServerTestCase
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.common.keys import Keys
+import tempfile
+from PIL import Image
+
+class SeleniumTest(StaticLiveServerTestCase):
+    def setUp(self):
+        super().setUp()
+        self.browser = webdriver.Chrome()  # Or Firefox, etc.
+
+    def tearDown(self):
+        self.browser.quit()
+        super().tearDown()
+
+    def test_upload_photo(self):
+        self.browser.get(self.live_server_url + reverse('image_share:upload_photo'))
+        
+        # Find form elements
+        title_input = self.browser.find_element(By.NAME, 'title')
+        title_input.send_keys('Selenium Test Photo')
+        
+        # Simulate file upload (adjust path to a test image)
+        temp_img = tempfile.NamedTemporaryFile(suffix=".jpg", delete=False)
+		Image.new('RGB', (100, 100)).save(temp_img, 'JPEG')
+        file_input = self.browser.find_element(By.NAME, 'image')
+        file_input.send_keys(temp_img.name)
+        # Submit form
+        submit_button = self.browser.find_element(By.CSS_SELECTOR, 'button[type="submit"]')
+        submit_button.click()
+        
+        # Check redirection to gallery and photo presence
+        self.assertIn('Photo Gallery', self.browser.title)
+        self.assertTrue(self.browser.find_element(By.ALT, 'Selenium Test Photo'))
+```
+Here we use **`StaticLiveServerTestCase`** from Django together with **Selenium** to perform **end-to-end (E2E) tests**. Unlike regular unit tests that test only backend logic, Selenium tests actually open a browser, interact with our web pages, and verify that everything works as a real user would experience it.   
+**`StaticLiveServerTestCase`**:  
+This Django class starts a temporary live test server and serves static files during testing. It lets Selenium access our site at a real URL (for example, `http://localhost:8081`) so we can test forms, buttons, and other UI interactions.  
+**`setUp()`**:   
+This method runs before each test.  Here, we initialize a Selenium browser instance (for example, Chrome or Firefox) that will be used to simulate user actions such as typing text or clicking buttons.  
+**`tearDown()`**:  
+This method runs after each test. It closes the browser to clean up resources and ensures each test runs in isolation.    
+**`test_upload_photo()`**:  
+This is the main test method that checks if the image upload feature works correctly from the user’s perspective.
+1. We navigate to the upload page using the live test server URL.
+2. Then we fill out the form fields the test finds the title input box and enters a sample title.
+3. After that we upload a test image a temporary image file is created using `tempfile` and `PIL` (Python Imaging Library) to simulate a real file upload.
+4. We Submit the form the test clicks the submit button just like a user would.
+5. Finally we Verify the result after submission, the test checks that:
+    - The browser title contains **“Photo Gallery”**, meaning the user was redirected correctly.
+    - An image with the `alt` text **“Selenium Test Photo”** appears, confirming the upload was successful.
+
+**`webdriver` (Selenium WebDriver)**:  
+**Selenium’s WebDriver** allows Python code to control a real web browser  it can open pages, fill out forms, click buttons, and read what’s displayed, making it perfect for testing real user workflows. With **Selenium**, we can perform more complex and realistic tests that go beyond checking backend logic; we can verify how the entire application behaves from a user’s perspective. These tests simulate genuine browser interactions like clicking, typing, and uploading files, helping us ensure that our site’s user interface continues to work correctly after any code change.
+### Why Automated Tests Matter
+Automated testing is essential for maintaining reliable and stable applications.  every time we update our code or add new features, we can rerun our test suite to make sure we haven’t accidentally broken anything that was already working. By combining **unit tests** (for backend logic) and **Selenium tests** (for frontend behavior), we build confidence in our app’s quality and reduce the risk of hidden bugs reaching production.
