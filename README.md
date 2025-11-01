@@ -79,7 +79,7 @@ This course is for learners who:
 You can clone this repository to get all the code and materials locally:
 
 ```bash
-git clone [https://github.com/YOUR_USERNAME/YOUR_REPOSITORY_NAME.git](https://github.com/YOUR_USERNAME/YOUR_REPOSITORY_NAME.git)
+git clone https://github.com/Bayt-al-Hikmah/Django
 ```
 
 - Follow the course **in order**, as each section builds on the previous one.
