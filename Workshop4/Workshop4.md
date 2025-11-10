@@ -199,7 +199,6 @@ MEDIA_URL = '/media/'
 ```
 The **`MEDIA_ROOT`** variable defines the **absolute path** on your server where uploaded files will be stored. In this case, it creates a folder named `media` inside your project’s base directory.  
 The **`MEDIA_URL`** variable specifies the **URL prefix** that will be used to access these uploaded files from the browser. For example, if you upload an image named `photo.jpg`, it will be available at:
-#### Configuring the Urls
 #### Configuring the URLs
 
 Finally, we need to set up the **URL configurations** for our app so Django knows how to route requests to the correct views.   
@@ -344,9 +343,6 @@ In a template like `blog/templates/blog/post_list.html`, we can now write:
 ```
 This works perfectly, even though `base.html` is not inside the `blog` app. This makes sharing layouts simple and clean.
 
-
----
-
 ### Database Configuration
 By default, Django uses SQLite, a lightweight, file-based database suitable for development. However, for production or more complex projects, we mostly use more robust database like PostgreSQL or MySQL. Django’s ORM supports multiple database backends, making it easy to switch with minimal code changes.
 #### SQLite Configuration
@@ -418,9 +414,6 @@ After modifying the configuration, we can test the connection by running:
 python manage.py migrate # python3 for mac/linux
 ```
 If everything is configured correctly, Django will create the necessary database tables.
-
----
-
 
 
 ### Using Namespaces for URL Organization
