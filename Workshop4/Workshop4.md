@@ -1,22 +1,19 @@
 ## Objectives
-
-- Upload and manage files efficiently
-- Work with settings files and project configuration
-- Understand middleware and learn how to create custom middleware
-- Implement testing and unit tests to ensure code quality
-## Upload and Manage Files Efficiently
+- Upload and Manage Files.
+- Work with Settings and Project Configuration
+- Understanding Middleware and Creating Custom Middleware
+- Implement Testing and Unit Tests
+## Upload and Manage Files
 ### Introduction
-In modern web applications, allowing users to upload files—such as images, documents, or other media is a common requirement. Whether it’s profile pictures, project files, or shared resources, file uploads add interactivity and functionality to your app. However, handling file uploads in a web application introduces challenges like storage management, security, and performance optimization. Django provides a robust and secure framework for managing file uploads, making it easier to integrate this feature into your projects.  
-We’ll explore how to configure Django to handle file uploads, discuss best practices for secure and efficient file management, and build a simple image-sharing app as an example. We’ll also cover how to manage URLs effectively using Django’s app_name to avoid naming conflicts and how to work with dynamic URLs using parameters and the reverse function for cleaner, more maintainable code.
-
+In modern web applications, allowing users to upload files—such as images, documents, or other media is a common requirement. Whether it’s profile pictures, project files, or shared resources, file uploads add interactivity and functionality to our app. However, handling file uploads in a web application introduces challenges like storage management, security, and performance optimization. Django provides a robust and secure framework for managing file uploads, making it easier to integrate this feature into our projects.  
+We’ll build a simple image-sharing app to explore how we handel file uploads. 
 ### Configuration for File Uploads
-To enable file uploads in a Django project, we need to configure our project to handle media files, as these are user-uploaded files distinct from static files (like CSS or JavaScript).   
+First thing to do is configuring our project to handle media files, as these are user-uploaded files distinct from static files.   
 Below are the key steps to configure Django for file uploads:
 #### Updating settings.py
-We need to **edit the `settings.py` file** to enable file uploads in our Django project.  
-To do this, we use the `MEDIA_ROOT` and `MEDIA_URL` settings, which tell Django **where** to store uploaded files and **how** to serve them to users.  
-- **`MEDIA_ROOT`**: The absolute filesystem path on the server where uploaded files are stored.
-- **`MEDIA_URL`**: The base URL that allows users to access these files through the browser.
+We need to add the `MEDIA_ROOT` and `MEDIA_URL`, to our ``settings.py`` file, they tell Django where to store uploaded files, and how to serve them to users.  
+- `MEDIA_ROOT`: The absolute filesystem path on the server where uploaded files are stored.
+- `MEDIA_URL`: The base URL that allows users to access these files through the browser.
 
 ```python
 # workshop4/settings.py
@@ -35,7 +32,8 @@ For example:
 http://127.0.0.1:8000/media/myphoto.jpg
   ```  
 #### Updating urls.py
-Next, we need to **include the URL patterns** that will serve the uploaded files in our project’s `urls.py` file.
+Next, we need to include the URL patterns that will serve the uploaded files in our project’s `urls.py` file.   
+We append additional URL patterns to serve uploaded media files, first we import `settings`  from `django.conf`  and `static` from `django.conf.urls.static`, then we use the static function to create the media url pattern, we pass to it two argument, `settings.MEDIA_URL` the endpoint we want to expose for the static files, and `document_root=settings.MEDIA_ROOT`  which represent the directory where our static files are stored.  
 ```python 
 from django.contrib import admin
 from django.urls import path, include
@@ -47,11 +45,9 @@ urlpatterns = [
     # Add other app URLs here
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
 ```
-Here we are appending additional URL patterns to serve uploaded media files during development. This tells Django to use the `MEDIA_URL` path (e.g., `/media/`) and serve files stored in the `MEDIA_ROOT` directory.  
-The `static()` function is a helper provided by Django that makes it easy to serve media files when running the development server (`python manage.py runserver`). It automatically maps the media URLs to the correct file locations so that uploaded files can be displayed in the browser.  
-However, this setup is intended **only for development**. In a **production environment**, Django should not handle file serving directly. Instead, we should configure a dedicated web server such as **Nginx** or **Apache** to serve our media files efficiently and securely.
+This setup is intended only for development. In a production environment, Django should not handle file serving directly. Instead, we should configure a dedicated web server such as Nginx or Apache to serve our media files.
 ### Building an Image Sharing App
-To put this into practice, we’ll create a simple **Image Sharing App** that allows users to upload and view images.  
+To put this into practice, Let's create a simple Image Sharing App that allows users to upload and view images.  
 Each uploaded image will include a title and display on a gallery page.   
 #### Createing a New Django App
 First, let's create a new project for this workshop, inside it create the new ``image_share`` app
@@ -72,8 +68,56 @@ INSTALLED_APPS = [
 	'django.contrib.staticfiles', 
 ]
 ```
+#### Configuring The settings.py 
+Now we configure where to store, the images and how to access them inside the ``settings.py`` file 
+```python
+MEDIA_ROOT = BASE_DIR / 'media' 
+MEDIA_URL = '/media/'
+```
+The `MEDIA_ROOT` defines the absolute path on our server where uploaded files will be stored.
+The `MEDIA_URL` variable specifies the URL prefix that will be used to access these uploaded files from the browser. 
+#### Configuring the URLs
+Finally, we need to set up the URL configurations for our app so Django knows how to route requests to the correct views.   
+First, we create a new `urls.py` file inside our app folder (`image_share/urls.py`). Then, define two routes:  
+- The root path (`''`) displays the gallery view that shows all uploaded photos.
+- The `'upload/'` path handles the upload form, allowing users to add new photos. 
+**``image_share/urls.py``**
+```python
+# image_share/urls.py
+from django.urls import path
+from . import views
+
+urlpatterns = [
+    path('', views.gallery, name='gallery'),
+    path('upload/', views.upload_photo, name='upload_photo'),
+]
+```
+Next, we include these URLs in the main project’s URL configuration (`workshop4/urls.py`).  
+We also need to configure Django to serve uploaded media files during development.    
+**`workshop4/urls.py`**
+```python
+# workshop4/urls.py
+from django.contrib import admin
+from django.urls import path, include
+from django.conf import settings
+from django.conf.urls.static import static
+
+urlpatterns = [
+    path('admin/', admin.site.urls),
+    path('', include('image_share.urls')),  # Include app URLs
+]
+
+# Serve media files during development
+if settings.DEBUG:
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+
+```
 #### Create the Photo Model
-Lets create simple model for our app that store the uploaded images
+After we finished making our project and app configurations, Its time to create the logic that will run our buisness, we start with the model that store the uploaded images, we will need three fields.  
+The `title` field is a `CharField` that stores name for the uploaded photo, limited to 100 characters.  
+The `image` field is an `ImageField` that handles image uploads. We pass to it `upload_to='uploads/'` as argument, which tells Django to store uploaded files inside a subdirectory named `uploads` within the `MEDIA_ROOT` directory.     
+The `uploaded_at` field is a `DateTimeField` with `auto_now_add=True`, which automatically saves the date and time when the photo was uploaded.  
+We add `__str__()` method which returns the photo’s title whenever the object is displayed 
 **``image_share/models.py``**
 ```python
 from django.db import models  
@@ -86,10 +130,8 @@ class Photo(models.Model):
 	def __str__(self):         
 		return self.title
 ```
-In this model, we define three main fields. The **`title`** field is a `CharField` that stores a short descriptive name for the uploaded photo, limited to 100 characters. The **`image`** field is an `ImageField` that handles image uploads. The argument `upload_to='uploads/'` tells Django to store uploaded files inside a subdirectory named **`uploads`** within the `MEDIA_ROOT` directory. The **`uploaded_at`** field is a `DateTimeField` with `auto_now_add=True`, which automatically saves the date and time when the photo was uploaded.  
-The `__str__()` method returns the photo’s title whenever the object is displayed (for example, in the Django admin panel), making it easier to identify records by name instead of by their ID.  
-When handling files, Django provides two main model field types. The **`FileField`** is used for general file uploads such as PDFs, text documents, or any non-image files. The **`ImageField`**, which we used here, is a specialized field for images. It includes automatic validation to ensure that the uploaded file is a valid image format, such as JPEG or PNG.   
-Before using the **`ImageField`**, we need to install an additional package called **Pillow**, this library allows Django to handle image files properly. Without it, we will encounter an error when trying to create migrations or upload images.
+When handling files, Django provides two main model field types. The `FileField` is used for general file uploads such as PDFs, text documents, or any non-image files. The `ImageField`, which we used here, is a specialized field for images. It includes automatic validation to ensure that the uploaded file is a valid image format, such as JPEG or PNG.   
+Before using the `ImageField`, we need to install an additional package called **Pillow**, this library allows Django to handle image files properly. Without it, we will encounter an error when trying to create migrations or upload images.
 ```shell
 pip install Pillow #pip3 for mac/linux
 ```
@@ -100,6 +142,7 @@ python manage.py migrate #python3 for mac/linux
 ```
 #### Creating the Upload Form
 Now, let’s create a form that handles image uploads.  
+We use a Django ``ModelForm`` to automatically generate form fields based on the ``Photo`` model. In our case, the user only needs to provide the title and the image, so we specify these fields explicitly using the ``fields`` property. 
 **``image_share/forms.py``**
 ```python
 from django import forms 
@@ -110,9 +153,10 @@ class PhotoForm(forms.ModelForm):
 		model = Photo         
 		fields = ['title', 'image']
 ```
-This form  automatically generates form fields based on the `Photo` model. In this case, it creates a text input for the **title** and a file picker for the **image**.
 #### Creating the Views
-Next, we’ll create the views that handle displaying uploaded images and managing new uploads.  
+Next, we’ll create the views that handle displaying uploaded images and managing new uploads, we create two views:    
+The `gallery` view retrieves all uploaded photos from the database, ordered by upload date (newest first), and passes them to the `gallery.html` template for display.  
+The `upload_photo` view handles both displaying the upload form and processing submitted data. When a `POST` request is sent, it reads both the form data (`request.POST`) and the uploaded file (`request.FILES`). If the form is valid, the new photo is saved and the user is redirected back to the gallery page. Otherwise, it simply renders the empty form for new uploads.
 `image_share/views.py`
 ```python
 from django.shortcuts import render, redirect
@@ -134,10 +178,9 @@ def upload_photo(request):    
         form = PhotoForm()    
     return render(request, 'image_share/upload.html', {'form': form})
 ```
-The **`gallery`** view retrieves all uploaded photos from the database, ordered by upload date (newest first), and passes them to the `gallery.html` template for display.  
-The **`upload_photo`** view handles both displaying the upload form and processing submitted data. When a `POST` request is sent, it reads both the form data (`request.POST`) and the uploaded file (`request.FILES`). If the form is valid, the new photo is saved and the user is redirected back to the gallery page. Otherwise, it simply renders the empty form for new uploads.
 #### Creating the Templates
-After we finished our views , let’s create the templates to display the uploaded images and the upload form. These templates will define the structure and layout of our web pages.   
+Finally, we need templates so user can interect with our app, we will create two templates.  
+A `gallery.html` which loop over all our photos display them with their name and uploaded date.     
 **`image_share/templates/image_share/gallery.html`**
 ```html
 <!DOCTYPE html>
@@ -165,7 +208,8 @@ After we finished our views , let’s create the templates to display the upload
     </div>
 </body>
 </html>
-```
+``` 
+A `upload.html` which display form to upload new image.  
 **`image_share/templates/image_share/upload.html`**
 ```html
 <!DOCTYPE html>
@@ -189,69 +233,13 @@ After we finished our views , let’s create the templates to display the upload
 </body>
 </html>
 ```
-The style file used here can be found inside the **`material` folder** attached to the workshop. It contains predefined styles for buttons, layouts, and the gallery grid to keep your pages visually consistent.
-#### Configuring the settings.py 
-Before Django can handle uploaded files, we need to configure where those files will be stored and how they can be accessed. This is done by adding **media settings** to the `settings.py` file.    
-We go to  **`settings.py`** file and add the following lines near the bottom:
-```python
-MEDIA_ROOT = BASE_DIR / 'media' 
-MEDIA_URL = '/media/'
-```
-The **`MEDIA_ROOT`** variable defines the **absolute path** on your server where uploaded files will be stored. In this case, it creates a folder named `media` inside your project’s base directory.  
-The **`MEDIA_URL`** variable specifies the **URL prefix** that will be used to access these uploaded files from the browser. For example, if you upload an image named `photo.jpg`, it will be available at:
-#### Configuring the URLs
-
-Finally, we need to set up the **URL configurations** for our app so Django knows how to route requests to the correct views.   
-First, create a new **`urls.py`** file inside your app folder (`image_share/urls.py`) if it doesn’t already exist. Then, add the following code:   
-**``image_share/urls.py``**
-```python
-# image_share/urls.py
-from django.urls import path
-from . import views
-
-urlpatterns = [
-    path('', views.gallery, name='gallery'),
-    path('upload/', views.upload_photo, name='upload_photo'),
-]
-```
-This file defines two routes:
-- The root path (`''`) displays the **gallery** view that shows all uploaded photos.
-- The `'upload/'` path handles the **upload form**, allowing users to add new photos.
-
-Next, we need to include these URLs in the **main project’s URL configuration** (`workshop4/urls.py`).  
-We also need to configure Django to serve uploaded media files during development.    
-**`workshop4/urls.py`**
-```python
-# workshop4/urls.py
-from django.contrib import admin
-from django.urls import path, include
-from django.conf import settings
-from django.conf.urls.static import static
-
-urlpatterns = [
-    path('admin/', admin.site.urls),
-    path('', include('image_share.urls')),  # Include app URLs
-]
-
-# Serve media files during development
-if settings.DEBUG:
-    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
-
-```
-Now, if we run the development server using the command below:
-```shell
-python manage.py runserver #python3 for mac/linux 
-```
-and open the browser at **`http://127.0.0.1:8000/`**, we’ll see the **photo gallery page**.  
-From there, we can click on **“Upload New Photo”** to go to the upload form, select an image, and submit it.  
-After uploading, Django will automatically save the image inside the **`media/uploads/`** folder, and it will instantly appear in the gallery view.  
-This confirms that our file upload system, URL routing, and media configuration are all working correctly.
+The style file used here can be found inside the `material` folder attached to the workshop. It contains predefined styles for buttons, layouts, and the gallery grid to keep your pages visually consistent.
 ## Project Configuration
-In the previous sections, we built applications using Django's default settings. While these defaults are excellent for getting started, real-world projects often require more specific configurations.   
-We will see how to customize your Django project's settings to manage **static files**, connect to different **databases**, centralize **templates**, and implement advanced **URL routing** with namespaces and dynamic parameters.
+So far in our projects we worked with Django's default settings. While these defaults are excellent for getting started, real-world projects often require more specific configurations.   
+We will see how to customize our Django project's settings to manage static files, connect to different databases, centralize templates, and implement advanced URL routing with namespaces and dynamic parameters.
 ### Static Files Configuration
-While `MEDIA` files are uploaded by users, **`STATIC`** files are the assets we provide as part of our application's design, such as CSS, JavaScript, and site logos.  
-By default, Django looks for static files inside a `static/` folder within each app (e.g., `image_share/static/image_share/css/style.css`). This structure is great for reusable apps, but for project-wide assets like a main stylesheet or logo, it's often cleaner to use a **centralized static directory**. We can configure this in our project's **`settings.py`** file. By adding our central folder's path to the **`STATICFILES_DIRS`** list, we tell Django to look for static files in that location _in addition_ to the app-specific folders.  
+While `MEDIA` files are uploaded by users, `STATIC` files are the assets we provide as part of our application's design, such as CSS, JavaScript, and site logos.  
+By default, Django looks for static files inside a `static/` folder within each app. This structure is great for reusable apps, but for project-wide assets like a main stylesheet or logo, it's often cleaner to use a centralized static directory. We can configure this in our project's `settings.py` file. By adding our central folder's path to the `STATICFILES_DIRS` list, we tell Django to look for static files in that location in addition to the app-specific folders.  
 
 ```python
 import os 
@@ -264,50 +252,23 @@ STATICFILES_DIRS = [
     BASE_DIR / 'static', 
 ]
 ```
-**`STATIC_URL`** defines the base URL path through which static files are accessed in the browser, for example, if we have a CSS file named `style.css`, it will be available at: `http://127.0.0.1:8000/static/style.css`   
+`STATIC_URL` defines the base URL path through which static files are accessed in the browser, for example, if we have a CSS file named `style.css`, it will be available at: `http://127.0.0.1:8000/static/style.css`   
 
-**`STATIC_ROOT`:** This is the single **destination** folder where all static files are copied when we run `python manage.py collectstatic`. This folder is only used for production. Our web server (like Nginx or Apache) is then configured to serve all files from this single, optimized directory.
+`STATIC_ROOT`: This is the single destination folder where all static files are copied when we run `python manage.py collectstatic`. This folder is only used for production. Our web server is then configured to serve all files from this single, optimized directory.
 
-**`STATICFILES_DIRS`** This is a list of **source** folders where Django looks for static files, _in addition_ to the `static/` folder inside each app.   
-- **In development:** `runserver` finds and serves files from these folders on the fly.
-- **For production:** `collectstatic` uses this list to find files to copy.
-#### Example
-To illustrate this, let's consider a new project with an app called `blog`.
-With this configuration, we can use a **hybrid approach** for our static files:  
-1. We create a single `static/` folder at the top level of our project (at the same level as our `blog` app). We use this folder for **project-wide** assets, such as the general `style.css` or `logo.png` that are shared across all apps.  
-2. We can still place static files that are **specific** to an app inside that app's static folder (e.g., `blog/static/blog/blog_posts.css`).
-
-Next, we update our `settings.py` to tell Django about this new central folder by adding its path to the **`STATICFILES_DIRS`** list:
-```python
-import os 
-
-STATIC_URL = '/static/'
-
-STATIC_ROOT = BASE_DIR / 'staticfiles' 
-
-STATICFILES_DIRS = [
-    BASE_DIR / 'static', 
-]
-```
-Now, in our templates, we can directly reference files from this central `static` folder. We no longer need to include the app name in the path.
-```html
-{% load static %}
-<link rel="stylesheet" href="{% static 'css/style.css' %}">
-<link rel="stylesheet" href="{% static 'blog/css/blog_posts.css' %}">
-```
+`STATICFILES_DIRS` This is a list of source folders where Django looks for static files, in addition to the `static/` folder inside each app.   
+In production we should run `python manage.py collectstatic` so Django collect all our static files and put them in the staticfiles directory that we configured our server to serve.  
 ### Templates Configuration
-Similar to static files, Django's default setting is to look for templates inside a `templates/` folder within each installed app (e.g., `image_share/templates/image_share/gallery.html`).  
-The repetition of the app name (`templates/image_share/`) is intentional. It creates a "namespace" for the templates, so if you have two apps with a `gallery.html` file, Django can tell them apart.  
+Similar to static files, Django's default setting is to look for templates inside a `templates/` folder within each installed app.  
+The repetition of the app name (`templates/image_share/`) is intentional. It creates a "namespace" for the templates, so if we have two apps with a `gallery.html` file, Django can tell them apart.  
 However, for some projects, it's simpler to have one central `templates` folder for the entire project, this will make it easier to share layout and compenont.   
-To apply this we modify the `TEMPLATES` setting in `workshop4/settings.py`:
+To apply this we modify the `TEMPLATES` setting in `settings.py`:
 ```python
-# workshop4/settings.py  
 TEMPLATES = [     
 	{         
 	'BACKEND': 'django.template.backends.django.DjangoTemplates',         
-	'DIRS': [BASE_DIR / 'templates'],  
-	# Add global templates directory         
-	'APP_DIRS': True,         
+	'DIRS': [BASE_DIR / 'templates'],  # add this       
+	'APP_DIRS': True,    # and this     
 	'OPTIONS': {             
 		'context_processors': [                 
 			'django.template.context_processors.debug',                
@@ -319,10 +280,10 @@ TEMPLATES = [
 	}, 
 ]
 ```
-**`'DIRS': [BASE_DIR / 'templates']`**: This is the key change. It's a list of **source** folders where Django will look for templates, in addition to the app-specific folders. We've added our main project-level `templates/` directory here.     
-**`'APP_DIRS': True`**: By keeping this `True`, we get the best of both worlds. Django will _first_ look in the folders defined in `DIRS` (our central folder) and _then_ look inside each app's `templates/` folder
+`'DIRS': [BASE_DIR / 'templates']`: Is a list of source folders where Django will look for templates, in addition to the app-specific folders. We've added our main project-level `templates/` directory here.     
+`'APP_DIRS': True`: This tell Django to first look in the folders defined in `DIRS` our central folder and then look inside each app's `templates/` folder
 #### Example
-To illustrate this, let's make our  `blog` take layout from ``base.html`` inside this centralized folder.
+To illustrate this, let's imagine we have project with `blog` app, the main layout is shared with other apps so it better to place ``base.html`` inside this centralized folder.
 We'll create a single `templates/` folder at the top level of our project, at the same level as our `blog` app folder. Inside it, we can place a shared layout file.
 ```
 my_project/
@@ -342,7 +303,6 @@ In a template like `blog/templates/blog/post_list.html`, we can now write:
     {% endblock %}
 ```
 This works perfectly, even though `base.html` is not inside the `blog` app. This makes sharing layouts simple and clean.
-
 ### Database Configuration
 By default, Django uses SQLite, a lightweight, file-based database suitable for development. However, for production or more complex projects, we mostly use more robust database like PostgreSQL or MySQL. Django’s ORM supports multiple database backends, making it easy to switch with minimal code changes.
 #### SQLite Configuration
@@ -355,12 +315,12 @@ DATABASES = {
 	} 
 }
 ```
-**`ENGINE`**: This tells Django to use its built-in backend for **SQLite 3**.       
-**`NAME`**: Unlike server-based databases (like PostgreSQL or MySQL) that require a database name, SQLite stores the entire database in a single file. This line tells Django to create and use a file named `db.sqlite3` right in our project's main directory (`BASE_DIR`).
+`ENGINE`: This tells Django to use its built-in backend for SQLite 3.       
+`NAME`: SQLite stores the entire database in a single file. This line tells Django to create and use a file named `db.sqlite3` right in our project's main directory (`BASE_DIR`).
 #### PostgreSQL Configuration
-Before Django can communicate with a PostgreSQL database, it needs a **database driver**. `psycopg2-binary` is the most popular Python package that acts as this bridge, allowing Django's ORM (Object-Relational Mapper) to translate Python code into PostgreSQL queries and understand the results.   
+Before Django can communicate with a PostgreSQL database, it needs a database driver. `psycopg2-binary` is the most popular Python package that acts as this bridge, allowing Django's ORM to translate Python code into PostgreSQL queries and understand the results.   
 First, install the driver:
-```
+```shell
 pip install psycopg2-binary # pip3 for mac/linux
 ```
 After this, we change the `DATABASES` dictionary inside the `settings.py` file so we can log in to our database:
@@ -376,14 +336,14 @@ DATABASES = {
 		} 
 	}
 ```
-**`ENGINE`**: This tells Django which database backend to use. `'django.db.backends.postgresql'` is the official Django backend for PostgreSQL, which relies on the `psycopg2-binary` package we installed.      
-**`NAME`**: The name of the specific database we want Django to use. We must create this database (named `workshop_db` in this example) inside our PostgreSQL server before we can run `python manage.py migrate`.    
-**`USER`**: The username that Django will use to log in to the PostgreSQL server. (`'postgres'` is the default administrator, but for security, we should create a dedicated, less-privileged user for our project).   
-**`PASSWORD`**: The password that corresponds to the `USER`.    
-**`HOST`**: The address of our database server. `localhost` (or `127.0.0.1`) means the database is running on the same machine as our Django application. In production, this might be an IP address or a domain name.   
-**`PORT`**: The network port that the PostgreSQL server is listening on. `5432` is the standard, default port for PostgreSQL. This line is often optional if you're using the default port.
+`ENGINE`: This tells Django which database backend to use. `'django.db.backends.postgresql'` is the official Django backend for PostgreSQL, which relies on the `psycopg2-binary` package we installed.      
+`NAME`: The name of the specific database we want Django to use. We must create this database inside our PostgreSQL server before we can run `python manage.py migrate`.    
+`USER`: The username that Django will use to log in to the PostgreSQL server.   
+`PASSWORD`: The password that corresponds to the `USER`.    
+`HOST`: The address of our database server. `localhost` (or `127.0.0.1`) means the database is running on the same machine as our Django application. In production, this might be an IP address or a domain name.   
+`PORT`: The network port that the PostgreSQL server is listening on. `5432` is the standard, default port for PostgreSQL. 
 #### MySQL Configuration
-Similarly, to connect to MySQL, you first need to install its specific Python driver, `mysqlclient`.
+Similarly, to connect to MySQL, we first need to install its specific Python driver, `mysqlclient`.
 ```shell
 pip install mysqlclient # pip3 for mac/linux
 ```
@@ -400,27 +360,25 @@ DATABASES = {
 	} 
 }
 ```
-These settings function just like the ones for PostgreSQL, but are specific to MySQL:
-**`ENGINE`**: Tells Django to use its built-in MySQL backend.    
-**`NAME`**: The name of your database (e.g., `workshop_db`), which you must create in MySQL first.
-**`USER`**: Your MySQL username.    
-**`PASSWORD`**: The corresponding password for that user.    
-**`HOST`**: The database server's address (usually `localhost` for development).    
-**`PORT`**: The network port MySQL is on. `3306` is the standard default for MySQL.    
+These settings function just like the ones for PostgreSQL, but are specific to MySQL:  
+`ENGINE`: Tells Django to use its built-in MySQL backend.    
+`NAME`: The name of our database, which we must create in MySQL first.
+`USER`: Your MySQL username.    
+`PASSWORD`: The corresponding password for that user.    
+`HOST`: The database server's address.    
+`PORT`: The network port MySQL is on. `3306` is the standard default for MySQL.    
 
-Django’s ORM (Object-Relational Mapper) abstracts away database-specific differences, allowing us to switch between databases with minimal changes to your code.
+Django’s ORM abstracts away database-specific differences, allowing us to switch between databases with minimal changes to our code.
 After modifying the configuration, we can test the connection by running:
 ```shell
 python manage.py migrate # python3 for mac/linux
 ```
 If everything is configured correctly, Django will create the necessary database tables.
-
-
 ### Using Namespaces for URL Organization
-As your project grows, it may contain multiple apps that define views with the same name (e.g., multiple apps each having a `detail` view). To prevent conflicts and improve clarity, Django allows us to define namespaces for each app’s URLs.   
+As our project grows, it may contain multiple apps that define views with the same name (e.g., multiple apps each having a `index` view). To prevent conflicts and improve clarity, Django allows us to define namespaces for each app’s URLs.   
 Here’s we can do it:  
 #### In Our App’s `urls.py`:
-The cleanest and most common way to add a namespace is by setting the `app_name` variable inside our **app's `urls.py` file**. This makes our app self-contained and reusable.
+The cleanest and most common way to add a namespace is by setting the `app_name` variable inside our app's `urls.py` file. This makes our app self-contained and reusable.
 ```python
 from django.urls import path
 from . import views
@@ -432,9 +390,9 @@ urlpatterns = [
 	path('upload/', views.upload_photo, name='upload_photo'),
 ]
 ```
-By adding `app_name = 'image_share'`, we are telling Django that all URL names in this file (like `'gallery'`) are now part of the `image_share` namespace.
+By adding `app_name = 'image_share'`, we are telling Django that all URL names in this file are now part of the `image_share` namespace.
 #### In Our Project’s `urls.py`:
-We can also define a namespace in our **project's `urls.py`** file when we `include()` the app's URLs:
+We can also define a namespace in our project's `urls.py` file when we `include()` the app's URLs:
 ```python
 from django.contrib import admin 
 from django.urls import path, include  
@@ -444,17 +402,16 @@ urlpatterns = [
 	path('', include('image_share.urls', namespace='image_share')), 
 ]
 ```
-#### Referencing Standard URLs 
-Let's use our `image_share` app as an example, where `app_name = 'image_share'` and we have a URL named `'gallery'`.   
-**In Templates** We use the `{% url %}` template tag with the namespaced name in the format `'app_name:view_name'`.
+#### Referencing The URLs 
+After we set the namespace to `app_name = 'image_share'`, In our templates to refer to route we use the `{% url %}` tag with the namespaced name in the format `'app_name:view_name'`.
 ```html
 <a href="{% url 'image_share:gallery' %}">View Gallery</a>
 
 <a href="{% url 'image_share:upload_photo' %}">Upload New Photo</a>
 ```
-**In Views** we use the `reverse()` function to find the URL, and `redirect()` to send the user there.  
-- **`reverse()`**: A function that looks up the URL path string from its name.
-- **`redirect()`**: A shortcut function that takes a URL name (or path) and returns an HTTP redirect response.
+If we want to refer to our route in View we use the `reverse()` function to find the URL, and `redirect()` to send the user there.  
+- `reverse()`: A function that looks up the URL path string from its name.
+- `redirect()`: A shortcut function that takes a URL name (or path) and returns an HTTP redirect response.
 ```python
 from django.shortcuts import redirect
 from django.urls import reverse
@@ -481,8 +438,8 @@ urlpatterns = [
 	path('photo/<int:photo_id>/', views.photo_detail, name='photo_detail'),
 ]
 ```
-To reference this URL, we **must** provide a value for `photo_id`.  
-**In Templates :** We pass the parameters to the `{% url %}` tag as additional arguments. The argument name (`photo_id=...`) must match the variable name in the `path()` (e.g., `<int:photo_id>`).
+To reference this URL, we must provide a value for `photo_id`.  
+In Templates: We pass the parameters to the `{% url %}` tag as additional arguments. The argument name (`photo_id=...`) must match the variable name in the `path()` (e.g., `<int:photo_id>`).
 ```html
 {% for photo in photos %}
     <a href="{% url 'image_share:photo_detail' photo_id=photo.pk %}">
@@ -498,7 +455,7 @@ If we know we need only one argument we can pass it directly without the need of
     </a>
 {% endfor %}
 ```
-**In Views:**  We pass the dynamic data using **`args`** (a list of positional arguments) or **`kwargs`** (a dictionary of keyword arguments). Using **`kwargs`** is highly recommended because it's more explicit and less error-prone.
+In Views:  We pass the dynamic data using `args`or `kwargs`. Using `kwargs` is highly recommended because it's more explicit and less error-prone.
 ```python
 from django.shortcuts import redirect
 from django.urls import reverse
@@ -524,19 +481,18 @@ def photo_upload_success(request, new_photo_id):
     # redirect() is smart enough to pass keyword arguments to reverse()
     return redirect('image_share:photo_detail', photo_id=new_photo_id)
 ```
-
 ## Middlewares
 ### Introduction
-Sometimes in our webapplication we oneed to process requests and responses globally, before they reach the views or after they leave them. Django provides a powerful mechanism for this through middleware.  
-Middleware are **hooks** that sit between Django’s request/response processing. Each middleware component is a lightweight layer that can modify the request before it reaches the view or the response before it is returned to the client.    
-When a request comes in, it passes through each middleware layer (from top to bottom) before it reaches our view. After our view produces a response, that response passes back through the layers (from bottom to top) before being sent to the browser.   
+Sometimes in our web application we need to process requests and responses globally, before they reach the views or after they leave them. Django provides a powerful mechanism for this through middleware.    
+Middleware are hooks that sit between Django’s request/response processing. Each middleware component is a lightweight layer that can modify the request before it reaches the view or the response before it is returned to the client.    
+When a request comes in, it passes through each middleware layer from top to bottom before it reaches our view. After our view produces a response, that response passes back through the layers from bottom to top before being sent to the browser.   
 ### How Middleware Works
 We can visualize middleware as a series of layers, like an onion, with our view at the very center. Every request and response must pass through these layers.   
 This process happens in two distinct phases:
-1. **Request Phase**: The request travels _inward_ through each middleware layer (from top-to-bottom as listed in `settings.py`) before it reaches the view.
-2. **Response Phase**: The response travels _outward_ through each layer (from bottom-to-top, in reverse order) before it’s sent back to the client.
+1. Request Phase: The request travels inward through each middleware layer from top-to-bottom as listed in `settings.py` before it reaches the view.
+2. Response Phase: The response travels outward through each layer from bottom-to-top, in reverse order before it’s sent back to the client.
 #### The Flow of Data
-This flow is critical to understand. A request passes _down_ through the list, and the response passes _up_.
+This flow is critical to understand. A request passes down through the list, and the response passes up.
 ```
 Client
    │
@@ -562,16 +518,16 @@ Client
 ```
 #### Order Is Critical
 We register our middleware as a list in `settings.py` under the `MIDDLEWARE` setting. The order in this list is not arbitrary; it defines the execution order:
-- **Request processing** follows the list **top-to-bottom**.
-- **Response processing** follows the list in **reverse, bottom-to-top**.
+- Request processing follows the list top-to-bottom.
+- Response processing follows the list in reverse, bottom-to-top.
 
-This is why, for example, `SessionMiddleware` must come _before_ `AuthenticationMiddleware`. The request must first have the session loaded (top-down) before the authentication middleware can use that session to find the user.
+This is why, for example, `SessionMiddleware` must come before `AuthenticationMiddleware`. The request must first have the session loaded before the authentication middleware can use that session to find the user.
 #### Capabilities of Middleware
 During this two-way journey, each middleware layer has the power to:
-- **Inspect and modify** the incoming `request` object before it reaches the view. 
-- **Process and modify** the outgoing `response` object after the view has finished.
-- **Handle exceptions** that might be raised by the view.
-- **Execute custom logic** during either phase, such as performing authentication checks, logging, adding security headers, or managing sessions.
+- Inspect and modify the incoming `request` object before it reaches the view. 
+- Process and modify the outgoing `response` object after the view has finished.
+- Handle exceptions that might be raised by the view.
+- Execute custom logic during either phase, such as performing authentication checks, logging, adding security headers, or managing sessions.
 
 #### Example of Default Middleware
 We can expect the default middleware in our settings.py file to understand how they work
@@ -589,13 +545,13 @@ MIDDLEWARE = [
 Each of these performs a specific function. For instance, `AuthenticationMiddleware` populates `request.user`, and `CsrfViewMiddleware` protects against Cross-Site Request Forgery attacks.   
 ### Creating Custom Middleware
 In Django, we can create our own custom middleware to add specific logic that runs for every request and response.  
-Middleware can be written in **two ways**:
-- As a **function-based** middleware (a simple function that takes `get_response` and `request`).
-- As a **class-based** middleware (a class that defines `__init__` and `__call__` methods).
+Middleware can be written in two ways:
+- As a function-based middleware a simple function that takes `get_response` and `request`.
+- As a class-based middleware a class that defines `__init__` and `__call__` methods.
 
 Let’s create two simple examples to understand how both approaches work.
 #### Logging Request and Response 
-In this example, we’ll make a middleware that logs the **HTTP method** (like GET or POST) and the **requested path**, as well as the **response status code** after the view runs.we create new file inside our app folder named `middleware.py` and we define our middleware class inside it.   
+In this example, we’ll make a class-based  middleware that logs the HTTP method and the requested path, as well as the response status code after the view runs.we create new file inside our app folder named `middleware.py` and we define our middleware class inside it.    
 **`blog/middleware.py`**
 ```python
 class LoggingMiddleware:
@@ -615,13 +571,12 @@ class LoggingMiddleware:
 
         return response
 ```
-When we create a middleware as a **class**, Django uses two special methods inside it:  `__init__()` and `__call__()`.     
+When we create a middleware as a class, Django uses two special methods inside it:  `__init__()` and `__call__()`.     
 
-**`__init__(self, get_response)`**: This part runs only once, when Django starts the server. Django gives our middleware a special function called **`get_response`**, which represents the **next step** in the request chain (the next middleware or the view).     
+`__init__(self, get_response)`: This part runs only once, when Django starts the server. Django gives our middleware a special function called `get_response`, which represents the next step in the request chain (the next middleware or the view).     
 
-`__call__(self, request)`
-This method runs **every time** a new request is received, Here’s what happens step by step:
-1. Django calls the `__call__` method and gives it the incoming **request**.
+`__call__(self, request)`: This method runs every time a new request is received, Here’s what happens step by step:
+1. Django calls the `__call__` method and gives it the incoming request.
 2. Before sending the request to the view, we can do something with it for example, print the HTTP method and path:  
 ```python
 print(f"[Request] Method: {request.method}, Path: {request.path}")
@@ -630,7 +585,7 @@ print(f"[Request] Method: {request.method}, Path: {request.path}")
 ```   python
 response = self.get_response(request)
 ``` 
-This line allows the view (or next middleware) to run and produce a response.    
+This line allows the view or next middleware to run and produce a response.    
 
 4. After the view returns a response, we can again do something  here, we print the response’s status code:
 ```python
