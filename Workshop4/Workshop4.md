@@ -573,27 +573,25 @@ class LoggingMiddleware:
 ```
 When we create a middleware as a class, Django uses two special methods inside it:  `__init__()` and `__call__()`.     
 
-`__init__(self, get_response)`: This part runs only once, when Django starts the server. Django gives our middleware a special function called `get_response`, which represents the next step in the request chain (the next middleware or the view).     
+`__init__(self, get_response)`: This is the constructor method, it run when we create instance from the class, the constructor have two parameter `self` refer to the instance we creating, and ``get_response``, inside our Class we saving the `get_response` as property so we can use it. When we run the server Django create instance of our middleware pass to it `get_response`. 
 
 `__call__(self, request)`: This method runs every time a new request is received, Here’s what happens step by step:
 1. Django calls the `__call__` method and gives it the incoming request.
-2. Before sending the request to the view, we can do something with it for example, print the HTTP method and path:  
+2. Before sending the request to the next middleware or to the view, we can do something with it for example, print the HTTP method and path:  
 ```python
 print(f"[Request] Method: {request.method}, Path: {request.path}")
 ```
-3. Then, we pass the request to the next layer using:
+3. Next, we forward the request to the following layer in the processing chain, which may be another middleware or the view, using the ``get_response`` function:
 ```   python
 response = self.get_response(request)
 ``` 
-This line allows the view or next middleware to run and produce a response.    
-
-4. After the view returns a response, we can again do something  here, we print the response’s status code:
+4. After the view returns a response, we can again do something here, we print the response’s status code:
 ```python
 print(f"[Response] Status Code: {response.status_code}")
 ```
-5. Finally, we return the response back to Django so it can send it to the user’s browser.
+5. Finally, we return the response, allowing it to travel back up through the middleware stack until it reaches the user’s browser.
 
-To use it, we add our middleware to `MIDDLEWARE` list inside  ``settinga.py``:
+To the middleware that we created, we add it to `MIDDLEWARE` list inside  ``settings.py``:
 ```python
 MIDDLEWARE = [
     # ... existing middleware ...
@@ -605,10 +603,10 @@ Now when we visit any page, Django will print messages like:
 [Request] Method: GET, Path: / [Response] Status Code: 200
 ```
 #### Blocking Specific IP 
-Sometimes, we may want to **block access** to our website from certain IP addresses for example, to stop spam bots or restrict internal access.    
-We can easily do this by creating a **function-based middleware** that checks the visitor’s IP address before allowing the request to continue.    
-This time, we’ll place our middleware **inside the main project folder**  
-**``project_name/middleware.py``**
+Sometimes, we may want to block access to our website from certain IP addresses for example, to stop spam bots or restrict internal access.    
+Let's create a function-based middleware that checks the visitor’s IP address before allowing the request to continue.    
+This time, we’ll place our middleware inside the main project folder.     
+**``workshop4/middleware.py``**
 ```python
 from django.http import HttpResponseForbidden  
 
@@ -627,31 +625,26 @@ def block_ip_middleware(get_response):
 
     return middleware
 ```
-The outer function `block_ip_middleware(get_response)` runs **once** when Django starts. Its job is to receive `get_response` (the next layer in the chain) and return another function that will handle each request.   
-
-The inner function `middleware(request)` is the real worker  it runs for every request. It checks the visitor’s IP address, and if it’s in the blocked list, it immediately returns an `HttpResponseForbidden`, stopping the request before it reaches the view. If the IP is not blocked, it simply calls `get_response(request)` to continue the normal flow and then returns the response.
-
-Finally, the outer function returns this inner `middleware` function to Django, which then calls it automatically for every new request.  
-
-Now we need to tell Django to use our middleware.  we open  **`settings.py`** and add it to the `MIDDLEWARE` list:
+To create function-based middleware, we start by defining a wrapper function. This function behaves like the ``__init__`` method in class-based middleware: it takes ``get_response`` as an argument and returns another function that contains the middleware logic.  
+Inside the wrapper function, we define the inner function that represents the middleware logic. This inner function works similarly to the ``__call__`` method in class-based middleware. It takes the request as an argument, executes logic before the view is called, then uses ``get_response`` to pass the request to the next layer, and finally returns the response.    
+Now we need to tell Django to use our middleware.  we open  `settings.py` and add it to the `MIDDLEWARE` list:
 ```python
 MIDDLEWARE = [
     # ... existing middleware ...
     'workshop4.middleware.block_ip_middleware',
 ]
 ```
-
 ## Implement Testing and Unit Tests
 Testing is a crucial part of software development that ensures our code behaves as expected, catches bugs early, and maintains reliability as our project evolves. In Django, testing helps verify that our views, models, forms, and other components work correctly. We'll start by discussing manual verification and error handling, then move into automated testing with unit tests, and finally explore advanced browser-based testing using tools like Selenium.
 ### Testing Our Programs and Errors
 Before diving into automated tests, it's important to manually verify our code and handle common errors. This hands-on approach helps us understand issues quickly during development.
 #### Verifying and Fixing by Ourselves
 Manual testing involves running our application and checking its behavior step by step. Start by using Django's development server (python manage.py runserver) and interact with your app through a browser or tools like Postman for API endpoints.  
-**Steps for Manual Verification**:
+Steps for Manual Verification:
 - Test core functionalities: For example, in our image-sharing app, upload a photo, check if it appears in the gallery, and verify the image URL works.
 - Simulate user inputs: Try valid and invalid data (e.g., uploading a non-image file to see if validation fails gracefully).
 - Check edge cases: What happens with large files, empty titles, or concurrent uploads?
-- Use Django's debug mode: With ``DEBUG = True`` in ``settings.py`^, Django shows detailed error pages with stack traces, helping you pinpoint issues like missing imports or template errors.
+- Use Django's debug mode: With ``DEBUG = True`` in `settings.py`, Django shows detailed error pages with stack traces, helping you pinpoint issues like missing imports or template errors.
 
 If you encounter bugs, fix them iteratively:
 - Read error messages carefully they often point to the exact line of code.
@@ -661,7 +654,7 @@ If you encounter bugs, fix them iteratively:
 While manual testing is quick for small changes, it's error-prone and time-consuming for larger projects. That's where handling common errors and automated testing come in.
 #### Handling Common Errors
 Django provides built-in support for graceful error handling, allowing us to customize responses for common HTTP errors like 404 (Page Not Found) or 500 (Server Error). This improves user experience by showing friendly pages instead of raw errors.   
-To enable custom error pages, we set ``DEBUG = False`` in ``settings.py`` (for production-like testing), then create templates for each error code in your project's central templates/ folder (or app-specific if preferred).   
+To enable custom error pages, we set ``DEBUG = False`` in ``settings.py``, then create templates for each error code in our project's central ``templates/`` folder.   
 
 **Custom 404 Page**:    
 Create templates/404.html:
@@ -695,7 +688,7 @@ Create templates/500.html:
 </body>
 </html>
 ```
-To activate these, add handler views in your project's urls.py:
+To activate these, we add handler views in our project's ``urls.py``:
 ```python
 # workshop4/urls.py
 from django.conf import settings
@@ -714,9 +707,14 @@ urlpatterns = [
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
 ```
-`handler404` defines the view Django will use when a requested page or resource doesn’t exist (for example, when visiting `/nonexistent/`). Here, it uses Django’s built-in view `django.views.defaults.page_not_found`, which automatically looks for a template named **`404.html`** in our templates directory. If it finds that file, Django will render it as the “Page Not Found” response.    
-`handler500` defines the view Django will use when a server-side error occurs (such as an unhandled exception in your code). It uses Django’s default view `django.views.defaults.server_error`, which looks for a **`500.html`** template to display whenever an internal server error happens.    
-We can also fully customize these error-handling functions to add extra context or logic for example, logging the error or showing user-friendly messages based on the request.
+`handler404` defines the view Django will use when a requested page or resource doesn’t exist. Here, it uses Django’s built-in view `django.views.defaults.page_not_found`, which automatically looks for a template named `404.html` in our templates directory and render it as the “Page Not Found” response.     
+`handler500` defines the view Django will use when a server-side error occurs. It uses Django’s default view `django.views.defaults.server_error`, which looks for a `500.html` template to display whenever an internal server error happens.     
+We can also fully customize these error-handling functions to add extra context or logic for example, logging the error or showing user-friendly messages based on the request.  
+Let's create customized handler, inside our main `urls.py` file, we create two function.   
+- ``custom_404`` render the ``404.html`` template with error message as context and status code 404.  
+- ``custom_500`` render the ``500.html`` template with error message as context and status code 500.
+
+After that we use them instead the default Django functions
 ```python
 from django.shortcuts import render
 
@@ -726,18 +724,17 @@ def custom_404(request, exception):
 def custom_500(request):
     return render(request, '500.html', {'error_message': 'Something went wrong on our end. Please try again later.'}, status=500)
 
-handler404 = 'workshop4.urls.custom_404'
-handler500 = 'workshop4.urls.custom_500'
+handler404 = 'workshop4.urls.custom_404' # we use our custom_404
+handler500 = 'workshop4.urls.custom_500' # we use our custom_500
 ```
-Now, our `404.html` and `500.html` templates can use the variables passed from these functions (like `{{ error_message }}`), giving us full flexibility to design and personalize our error pages.
 ### The Need for Automated Testing
 Even after manual fixes and error handling, we still need to ensure our apps work as expected over time. Bugs can creep in from code changes, and in group projects, one person's commit might break another's feature. Automated tests run quickly and repeatedly, catching issues early and ensuring the project remains stable.  
-Django's testing framework, built on Python's unittest module, allows us to write tests that simulate requests, check database interactions, and verify outputs. This is essential for regression testing ensuring new changes don't break existing functionality.
+Django's testing framework, built on Python's unittest module, allows us to write tests that simulate requests, check database interactions, and verify outputs.
 ### Unit Tests in Django
-Unit tests focus on small, isolated parts of our code (e.g., a single function or model method). Django provides a tests.py file in each app where we can write these tests. It uses an in-memory test database to keep tests fast and isolated from your real data.
+Unit tests focus on small, isolated parts of our code. Django provides a ``tests.py`` file in each app where we can write these tests. It uses an in-memory test database to keep tests fast and isolated from your real data.
 #### How to Write and Run Unit Tests
-1. **Setup**: In image_share/tests.py, import necessary modules and use Django's TestCase class.
-2. **Writing Tests**: Each test method starts with test_ and uses assertions like self.assertEqual() to check expected vs. actual results.
+1. Setup: In image_share/tests.py, import necessary modules and use Django's TestCase class.
+2. Writing Tests: Each test method starts with ``test_`` and uses assertions like ``self.assertEqual()`` to check expected vs. actual results.
 
 Example for testing our Photo model and views:
 ```python
@@ -777,17 +774,17 @@ class GalleryViewTest(TestCase):
 ```
 Here we made write simple unit tests to verify that our models, forms, and views work as expected.   
 **`setUp()`**: This method runs automatically before each test. It prepares any data or objects needed for testing for example, creating a sample `Photo` object or initializing a test client that simulates a web browser.    
-**`Client`**: The Django test `Client` acts like a lightweight web browser used for testing. It lets us send simulated HTTP requests (`GET`, `POST`, etc.) to our Django application **without running a real server**. This helps verify how views respond to different requests. For example,
+**`Client`**: The Django test `Client` acts like a lightweight web browser used for testing. It lets us send simulated HTTP requests (`GET`, `POST`, etc.) to our Django application without running a real server. This helps verify how views respond to different requests. For example,
 ```python
 response = self.client.get(url)
 ```
 sends a GET request to a page, and we can then check the response status or contents (like verifying it contains specific text).    
-**Assertions**: Inside each test, we use special methods like `assertEqual`, `assertTrue`, and `assertContains` to check whether the code behaves as expected.
+Assertions: Inside each test, we use special methods like `assertEqual`, `assertTrue`, and `assertContains` to check whether the code behaves as expected.
 - `assertEqual(a, b)` verifies that two values are equal.
 - `assertTrue(x)` checks that a condition is `True`.
 - `assertContains(response, text)` ensures that the given text appears in the HTTP response.
 
-**Running Tests**: To run the test we use the command:
+Running Tests: To run the test we use the command:
 ```shell
 python manage.py test  # Runs all tests in the project
 ```
@@ -843,7 +840,7 @@ class SeleniumTest(StaticLiveServerTestCase):
         self.assertIn('Photo Gallery', self.browser.title)
         self.assertTrue(self.browser.find_element(By.ALT, 'Selenium Test Photo'))
 ```
-Here we use **`StaticLiveServerTestCase`** from Django together with **Selenium** to perform **end-to-end (E2E) tests**. Unlike regular unit tests that test only backend logic, Selenium tests actually open a browser, interact with our web pages, and verify that everything works as a real user would experience it.   
+Here we use **`StaticLiveServerTestCase`** from Django together with Selenium to perform end-to-end (E2E) tests. Unlike regular unit tests that test only backend logic, Selenium tests actually open a browser, interact with our web pages, and verify that everything works as a real user would experience it.   
 **`StaticLiveServerTestCase`**:  
 This Django class starts a temporary live test server and serves static files during testing. It lets Selenium access our site at a real URL (for example, `http://localhost:8081`) so we can test forms, buttons, and other UI interactions.  
 **`setUp()`**:   
@@ -857,10 +854,10 @@ This is the main test method that checks if the image upload feature works corre
 3. After that we upload a test image a temporary image file is created using `tempfile` and `PIL` (Python Imaging Library) to simulate a real file upload.
 4. We Submit the form the test clicks the submit button just like a user would.
 5. Finally we Verify the result after submission, the test checks that:
-    - The browser title contains **“Photo Gallery”**, meaning the user was redirected correctly.
-    - An image with the `alt` text **“Selenium Test Photo”** appears, confirming the upload was successful.
+    - The browser title contains “Photo Gallery”, meaning the user was redirected correctly.
+    - An image with the `alt` text “Selenium Test Photo” appears, confirming the upload was successful.
 
 **`webdriver` (Selenium WebDriver)**:  
-**Selenium’s WebDriver** allows Python code to control a real web browser  it can open pages, fill out forms, click buttons, and read what’s displayed, making it perfect for testing real user workflows. With **Selenium**, we can perform more complex and realistic tests that go beyond checking backend logic; we can verify how the entire application behaves from a user’s perspective. These tests simulate genuine browser interactions like clicking, typing, and uploading files, helping us ensure that our site’s user interface continues to work correctly after any code change.
+**Selenium’s WebDriver** allows Python code to control a real web browser  it can open pages, fill out forms, click buttons, and read what’s displayed, making it perfect for testing real user workflows. With Selenium, we can perform more complex and realistic tests that go beyond checking backend logic; we can verify how the entire application behaves from a user’s perspective. These tests simulate genuine browser interactions like clicking, typing, and uploading files, helping us ensure that our site’s user interface continues to work correctly after any code change.
 ### Why Automated Tests Matter
-Automated testing is essential for maintaining reliable and stable applications.  every time we update our code or add new features, we can rerun our test suite to make sure we haven’t accidentally broken anything that was already working. By combining **unit tests** (for backend logic) and **Selenium tests** (for frontend behavior), we build confidence in our app’s quality and reduce the risk of hidden bugs reaching production.  
+Automated testing is essential for maintaining reliable and stable applications.  every time we update our code or add new features, we can rerun our test suite to make sure we haven’t accidentally broken anything that was already working. By combining unit tests (for backend logic) and Selenium tests (for frontend behavior), we build confidence in our app’s quality and reduce the risk of hidden bugs reaching production.  
