@@ -88,7 +88,7 @@ Let’s generate those apps:
 ```shell
 python manage.py startapp user
 python manage.py startapp task
-python manage.py startapp auth
+python manage.py startapp users_auth
 ```
 After that we add them to the INSTALLED_APPS inside our ``settings.py`` file
 ### Creating The Database Models
@@ -119,7 +119,7 @@ MEDIA_URL = '/media/'
 ```
 Finally we need to tall Django to use our costume model for authentication instead the default one, we do this in our ``settings.py`` file.
 ```python
-AUTH_USER_MODEL = 'api.User'
+AUTH_USER_MODEL = 'user.UserModel'
 ```
 #### Creating The Task Model
 Now we move to create the Task Model, we do that inside `task` app.   
@@ -137,483 +137,309 @@ class Task(models.Model):
     def __str__(self):
         return self.name
 ```
-### Creating Guards
-When a user is logged in, we remove their access to the Login and Registration routes. When a user is not authenticated, we prevent them from performing any actions on the task-related routes. We handle this by using route guards. 
-We create an Authorization Guard to protect routes that require an authenticated user, and another guard to prevent logged-in users from accessing authentication routes (such as Login and Registration).  
-**``src/guard/authorization.guard.ts``**
-```ts
-import { CanActivate, ExecutionContext, Injectable } from '@nestjs/common';
+### Creating The Serializer
+In our previous applications, we used forms to receive data from users, and Django forms to validate and handle that data. However, when working with REST APIs, data is received in JSON format, and responses are also returned to the user as JSON.
 
-@Injectable()
-export class Authorized implements CanActivate {
-  async canActivate(context: ExecutionContext): Promise<boolean> {
-    const req = context.switchToHttp().getRequest(); 
-    const res = context.switchToHttp().getResponse(); 
-    const id =  req.session.get("userId");
-    if (!id){
-       return res.status(403).send({message:"Not Authorized"}); 
-    } 
-    return true;
-  }
-}
+To handle this, we use serializers. Serializers are special class that are responsible for transforming our models into JSON format and returning them to the user. They also convert incoming JSON data into model instances and validate the data sent by the user.
+#### Creating Auth Serializers
+We Start by creating the auth serializers, that will work with the registration and login data, inside the `users_auth` folder we create `serializers.py` file and inside it we define our classes.  
+First we import `get_user_model` and use it to get the User model, which we set in the ``settings.py`` in our case it will be the `UserModel` that we declared inside `user/models.py`.  
+After this we create our serializers classes we will need two classes.   
+- ``RegisterSerializer``: This serializer inherits from ``ModelSerializer`` which is a special class tied directly to a Django model. It automatically generates serializer fields based on the model fields and provides built-in ``create()`` and ``update()`` methods. We will use it to create new users. First thing we do it marking our password field as as write_only so it is not returned in responses. After this we define `Meta` class where we set the model our serializer will use and the fields we will recive, Next we override the `create` method, we get our password we create User instance using the validated data, we hashes and set the password using ``set_password()`` before then we save the user to the database and return it.
+- `LoginSerializer`: This serializer inherits from Serializer, which is a basic serializer where all fields and validation logic are explicitly defined. It is not connected to a Django model by default.
+Inside this class, we receive the username and password, then define a validate method that uses Django’s built-in authenticate() function to check whether the user credentials are valid. If authentication succeeds, the authenticated user is added to the validated data and returned; otherwise, a validation error is raised.
+```python
+from rest_framework import serializers
+from django.contrib.auth import get_user_model,authenticate
 
-@Injectable()
-export class Guest implements CanActivate {
-  async canActivate(context: ExecutionContext): Promise<boolean> {
-    const req = context.switchToHttp().getRequest();  
-    const res = context.switchToHttp().getResponse();  
-    const id = req.session.get("userId");
-    if (!id){
-      return true;
-    } 
-    return res.status(403).send({message:"You Aleardy Logged in"}); 
-  }
-}
+User = get_user_model()
+
+class RegisterSerializer(serializers.ModelSerializer):
+    password = serializers.CharField(write_only=True)
+
+    class Meta:
+        model = User
+        fields = ['username', 'email', 'password', 'avatar']
+
+    def create(self, validated_data):
+        password = validated_data.pop('password')
+        user = User(**validated_data)
+        user.set_password(password)
+        user.save()
+        return user
+
+class LoginSerializer(serializers.Serializer):
+    username = serializers.CharField()
+    password = serializers.CharField()
+
+    def validate(self, data):
+        user = authenticate(
+            username=data['username'],
+            password=data['password']
+        )
+        if not user:
+            raise serializers.ValidationError("Invalid credentials")
+        data['user'] = user
+        return data
 ```
-### Creating The Parametre Decorator
-We submitting files so we also need parametre decorator, to retrive the file from the form. and another parametre decorator for retriving form fields.  
+#### Creating User Serializers
+We also need serialiers for user, it will handel updating profile data like username, email, avatar and password, lets create two class.
+- `UpdatePasswordSerializer`: inherits from Serializer class, it responsible for updating the user password.
+- `UpdateUserSerializer`: inherits from `ModelSerializer` it use the `User` model and expose the `username`, `email` and `password` fields. it use the `ModelSerializer` predifined methods to update the user data
+```python
+from rest_framework import serializers
+from django.contrib.auth import get_user_model
 
-We start with the `File` decorator, it loop over the form data when it find field named type it return it content.  
-**``parameter_decorators/parametre.decorator.file.ts``**
-```ts
-import { createParamDecorator, ExecutionContext,BadRequestException,InternalServerErrorException } from '@nestjs/common';
-import {MultipartFile} from '@fastify/multipart'
-export const File = createParamDecorator(
+User = get_user_model()
 
-  async (data: unknown, ctx: ExecutionContext):Promise<MultipartFile|null> => {
+class UpdatePasswordSerializer(serializers.Serializer):
+    password = serializers.CharField(write_only=True)
 
-    const request = ctx.switchToHttp().getRequest(); 
-    if (!request.isMultipart()) {
-      throw new BadRequestException('Request must be multipart/form-data.');
-    }
-    const parts = request.parts();
-    try {
-      for await (const part of parts) {
-        if (part.type === 'file') {
-          return part;   
-        }
-      }
+    def update(self, instance, validated_data):
+        instance.set_password(validated_data['password'])
+        instance.save()
+        return instance
+
+class UpdateUserSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = User
+        fields = ['username', 'email', 'avatar']
+```
+#### Creating Task Serializers
+Finally, we create the Task serializer. This serializer is used to handle all task-related operations, such as creating new tasks, updating existing tasks, and deleting tasks.  
+We set the `user` and `created_at` fields to read only so we prevents users from assigning tasks to other users
+```python
+from rest_framework import serializers
+from .models import Task
+
+class TaskSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Task
+        fields = ['id', 'name', 'state', 'created_at', 'user']
+        read_only_fields = ['user', 'created_at']
+```
+### Creating the Views
+After defining our serializers, the next step is to create the views. Views are responsible for handling HTTP requests, using serializers to validate data, and returning appropriate responses.  
+We will use Django REST Framework views to handle authentication, user profile updates, and task operations.
+#### The Authentication Views
+We will create two authentication views: one for registration and one for login. These views use the authentication serializers defined earlier. Instead of using function-based views, we use class-based views by inheriting from `APIView`. This allows us to organize our logic clearly and take advantage of Django REST Framework features.
+
+- `RegisterView`: This view handles user registration and uses the `POST` method because data is sent from the client. Inside the method, we create `RegisterView` serializer instance using the request data and check whether it is valid. If the data is valid, the serializer saves the new user and returns a success message. Otherwise, it returns a response containing the validation errors.  
+- `LoginView`: This view also uses the `POST` method and relies on the `LoginSerializer` to validate the incoming login credentials. If the credentials are valid, the serializer returns the authenticated user and log him in; otherwise, an error response is sent.
+```python
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status
+from .serializers import RegisterSerializer, LoginSerializer
+from django.contrib.auth import login
+
+class RegisterView(APIView):
+    def post(self, request):
+        serializer = RegisterSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(
+                {"message": "User registered successfully"},
+                status=status.HTTP_201_CREATED
+            )
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+class LoginView(APIView):
+    def post(self, request):
+        serializer = LoginSerializer(data=request.data)
+        if serializer.is_valid():
+            user = serializer.validated_data['user']
+            login(request, user)
+            return Response(
+                {"message": "Login successful"},
+                status=status.HTTP_200_OK
+            )
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+```
+#### The User Views
+We also create views that allow the authenticated user to manage their profile data. These views are protected using the `IsAuthenticated` permission, which ensures that only logged-in users can access them.
+- `UserProfileView`: This class to retrive loged in user information, we use the `get` method, we retriving data using `GET` HTTP method. inside it we use `UpdateUserSerializer(request.user)` to retrive loged in user information and return them back.
+- `UpdateUserView`: This class to update the logged in user information avatar, email nd username, we used the `PUT` method.
+- `UpdatePasswordView`: Finally this class update the logged in user password. we used the `PATCH` method.
+```python
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status
+from .serializers import UpdatePasswordSerializer, UpdateUserSerializer
+
+class UserProfileView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        serializer = UpdateUserSerializer(request.user)
+        return Response(serializer.data, status=status.HTTP_200_OK)
     
-    } catch (error) {
-      console.error('File upload error:', error);
-      throw new InternalServerErrorException('File upload failed due to a server error.');
-    }
-    return null;
-}   
-)
+class UpdateUserView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def put(self, request):
+        serializer = UpdateUserSerializer(
+            instance=request.user,
+            data=request.data,
+            partial=True
+        )
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+class UpdatePasswordView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def patch(self, request):
+        serializer = UpdatePasswordSerializer(
+            instance=request.user,
+            data=request.data
+        )
+        if serializer.is_valid():
+            serializer.save()
+            return Response(
+                {"message": "Password updated successfully"},
+                status=status.HTTP_200_OK
+            )
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 ```
-After that we create parameter decorator to retrive the form field and return them as CreateUserDtor or UpdateUserDto.  
-**``parameter_decorators/parametre.decorator.fields.ts``**
-```ts
-import { createParamDecorator, ExecutionContext} from '@nestjs/common';
-import { CreateUserDto} from '../users/dto/create-user.dto';
-import { UpdateUserDto} from '../users/dto/update-user.dto';
-export const Fields= createParamDecorator(
+#### User Task Views
+Now we create the last views, The task views. we will use ``ModelViewSet`` because it provides a complete set of CRUD operations (Create, Read, Update, Delete) for our Task model with minimal code. ModelViewSet automatically gives us all these actions (list, retrieve, create, update, partial_update, and destroy) in a single class.  
+We override the ``get_queryset()`` method to ensures that a user can only access their own tasks, by filtering tasks based on the currently authenticated user (self.request.user). 
+We also override the ``perform_create()`` method which is called when a new task is created; here, we automatically associate the task with the logged-in user. 
+```python
+from rest_framework.viewsets import ModelViewSet
+from rest_framework.permissions import IsAuthenticated
+from .models import Task
+from .serializers import TaskSerializer
 
-  async (data: unknown, ctx: ExecutionContext):Promise<CreateUserDto|UpdateUserDto> => {
+class TaskViewSet(ModelViewSet):
+    serializer_class = TaskSerializer
+    permission_classes = [IsAuthenticated]
 
-    const request = ctx.switchToHttp().getRequest(); 
-    const parts = request.parts();
-    let avatar = '';
-      let typeDto: CreateUserDto|UpdateUserDto = {} as CreateUserDto|UpdateUserDto;
-      for await (const part of parts) {
-          if (part.type !== 'file') {
-            typeDto[part.fieldname] = part.value;
-          }else{
-            break;
-          }
-        }
-        return typeDto;
-    } 
-)
+    def get_queryset(self):
+        return Task.objects.filter(user=self.request.user)
+
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)
 ```
-### Creating The Services and Controllers
-Now everything is set we start to create our services and controllers.
-#### The Auth Service
-We start with the authorification service, we will create three methods2.
-- ``uploadAvatar`` this method handel uploading the avatar image to our server.
-- ``register`` this method to save new user record in our database
-- ``login`` finally this will verify email and password and log user in.
-```ts
-import { Injectable } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-import { User } from '../users/entities/user.entity';
-import { CreateUserDto, LoginDto} from '../users/dto/create-user.dto';
-import * as argon2 from 'argon2';
-import { MultipartFile} from '@fastify/multipart';
-import { createWriteStream } from 'fs';
-import { join } from 'path';
-import { randomUUID } from 'crypto';
+### Configuring the URLs
+Now we set up our URL routing to connect the views we created with actual API endpoints. Since our project contains both regular API views `APIView` and a `ModelViewSet`, we will combine standard path-based routing with router-based routing.
+#### Why we use a Router
+For the task views, we used a `ModelViewSet`, which works best with a DRF router. A router automatically generates all the required URLs for CRUD operations (`list`, `create`, `retrieve`, `update`, `partial_update`, `destroy`) without us having to define each one manually. This keeps the `urls.py` file clean and consistent with RESTful conventions.
+#### Defining Auth `urls.py`
+We start by defining the ``urls.py`` for the `users_auth` app, we use the `RegisterView` and `LoginView` view, when we register them we use the `as_view()` method,.
+```python
+from django.urls import path
+from .views import RegisterView, LoginView
 
-@Injectable()
-export class AuthService {
-  constructor(
-    @InjectRepository(User) 
-    private authRepository: Repository<User>
-  ) {}
-
-  async uploadAvatar(file: MultipartFile): Promise<string> {
-    const fileExtension = file.filename.split('.').pop();
-    const uniqueId = randomUUID();
-    const newFilename = `${uniqueId}.${fileExtension}`;
-    const filePath = join(process.cwd(), 'public/avatars', newFilename);
-
-    await new Promise<void>((resolve, reject) => {
-      const writeStream = createWriteStream(filePath);
-      file.file.pipe(writeStream)
-        .on('finish', resolve)
-        .on('error', reject);
-    });
-    return newFilename;
-  }
-  
-  async register(CreateUserDto: CreateUserDto): Promise<User> {
-    CreateUserDto.password = await argon2.hash(CreateUserDto.password);
-    const newUser = this.authRepository.create(CreateUserDto);
-    return this.authRepository.save(newUser);
-  }
-  
-  async login(LoginDto: LoginDto): Promise<User|null> {
-    const user = await this.authRepository.findOne({ where: { email: LoginDto.email} });
-    if (user && await argon2.verify(user.password, LoginDto.password)) {
-      return user;
-    }
-    return null;
-  }
-}
+urlpatterns = [
+    path('register/', RegisterView.as_view(), name='register'),
+    path('login/', LoginView.as_view(), name='login'),
+]
 ```
-We are using the User entity in our server so we need to add it to our auth.module.ts imports
-```ts
-imports: [TypeOrmModule.forFeature([User])],
+#### Defining User `urls.py`
+Same as Before we create `urls.py` file inside our ``user`` app directory, in this directory we configure the `urlpatterns` for the user app.
+```python
+from django.urls import path
+from .views import UserProfileView, UpdateUserView, UpdatePasswordView
+
+urlpatterns = [
+    path('profile/', UserProfileView.as_view(), name='user-profile'),
+    path('update/', UpdateUserView.as_view(), name='user-update'),
+    path('update-password/', UpdatePasswordView.as_view(), name='user-update-password'),
+]
 ```
-#### The Auth Controller
-First we use the `Guest` guard to make sure logged in user can^t access this controller.after that we create our methods
-- ``POST register`` for registring user
-- ``POST login`` for login user in
-```ts 
-import { Controller, Post, Body, Req,Res,UseGuards} from '@nestjs/common';
-import { AuthService } from './auth.service';
-import { CreateUserDto,LoginDto } from '../users/dto/create-user.dto';
-import type { FastifyRequest,FastifyReply } from 'fastify';
-import type { Session } from '@fastify/secure-session'
-import { File } from 'src/parameter_decorators/parameter.decorator.file'
-import { Fields } from 'src/parameter_decorators/parameter.decorator.fields'
-import type { MultipartFile} from '@fastify/multipart';
-import {Guest} from 'src/guard/authorization.guard'
-@Controller('api')
-@UseGuards(Guest)
-export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+#### Defining Task `urls.py`
+Finally we define the task ``urls.py``, Since we used `ModelViewSet`, we use a router here. 
+```python
+from django.urls import path, include
+from rest_framework.routers import DefaultRouter
+from .views import TaskViewSet
 
-  @Post('register')
-  async register(@File() file:MultipartFile,@Fields() fields:CreateUserDto,@Res() res:FastifyReply) {
-    const filename:string = await this.authService.uploadAvatar(file);
-    fields.avatar = filename
-    await this.authService.register(fields);
-    return res.status(201).send({ message: 'Registred' });
-  }
-  
-  @Post('login')
-  async create(@Body() loginDto: LoginDto, @Req() req: FastifyRequest,@Res() res:FastifyReply) { 
-    const user = await this.authService.login(loginDto);
-    if(!user){
-    return res.status(401).send({ message: 'Invalid credentials' });
-    }
-    (req.session as any).set("userId",String(user.id) );
-    return res.status(201).send({ message: 'logged in' });
-  }
-  
-}
+router = DefaultRouter()
+router.register(r'', TaskViewSet, basename='task')
+
+urlpatterns = [
+    path('', include(router.urls)),
+]
 ```
-We can see instead of rendring templates, we using `send` to send JSON object as response to the request.
-#### The User Service
-We create the User service, we will need three methods.
-- ``findOne``: select and return using his id
-- ``updateUser``: update user information
-- ``updatePassword`` update user password
-```ts
-import { Injectable } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository,UpdateResult } from 'typeorm';
-import { AuthService} from '../auth/auth.service';
-import { UpdateUserDto,UpdatePasswordDto } from './dto/update-user.dto';
-import { User } from '../users/entities/user.entity';
-import * as argon2 from 'argon2';
+ This will expose the following endpoints
+- `GET /tasks/`  List user tasks
+- `POST /tasks/` Create a new task
+- `GET /tasks/<id>/` Retrieve a specific task
+- `PUT /tasks/<id>/` Update a task
+- `PATCH /tasks/<id>/` Partially update a task
+- `DELETE /tasks/<id>/` Delete a task
 
-@Injectable()
-export class UsersService {
-   constructor(
-      @InjectRepository(User) 
-      private userRepository: Repository<User>,
-    ) {}
+Finally we set the main ``urls.py`` to include all our apps urlspatterns
+```python
+from django.contrib import admin
+from django.urls import path, include
 
-  async findOne(id: number): Promise<User|null>{
-    return this.userRepository.findOne({ where: { id } });
-  }
- 
-  async updateUser(id: number, updateUserDto: UpdateUserDto): Promise<UpdateResult> {
-    return this.userRepository.update(id, updateUserDto);
-  }
+urlpatterns = [
+    path('admin/', admin.site.urls),
 
-  async updatePassword(id: number, updatePasswordDto: UpdatePasswordDto): Promise<UpdateResult> {
-    updatePasswordDto.password = await argon2.hash(updatePasswordDto.password || '');
-    return this.userRepository.update(id, updatePasswordDto);
-  }
-}
-```
-#### The User Controller
-Firstly we use the `Authorized` to make sure only logged in users can access and manage their accounts. After that we define three routes.
-- ``Get user`` return logged in user data.
-- ``Put user`` update the logged in user data.
-- ``Patch user/password`` update the logged in user password.
-- `````
-```ts
-import { Controller, Get, Put, Body, Patch, UseGuards,Res,Req} from '@nestjs/common';
-import { UsersService } from './users.service';
-import { UpdateUserDto,UpdatePasswordDto } from './dto/update-user.dto';
-import type { FastifyRequest, FastifyReply } from 'fastify';
-import {AuthService } from 'src/auth/auth.service';
-import { File } from 'src/parameter_decorators/parameter.decorator.file'
-import { Fields } from 'src/parameter_decorators/parameter.decorator.fields'
-import {Authorized} from 'src/guard/authorization.guard'
-
-@Controller('api')
-@UseGuards(Authorized)
-export class UsersController {
-  constructor(private readonly usersService: UsersService,
-    private readonly authService: AuthService ) {}
-
-  
-  @Get('user')
-  async findOne(@Req() req: FastifyRequest, @Res() reply: FastifyReply) {
-    const userSession = parseInt(req.session.get("userId"));
-    const user = await this.usersService.findOne(userSession);
-    if(!user){
-        return reply.status(404).send({ message: 'User not found' });
-    }
-    return reply.status(201).send(
-            {id: user.id,username: user.username,email: user.email,avatar: 'static/avatars/' + user.avatar,});
-  }
-
-  @Put('user')
-  async updateUser(@File() file,@Fields() fields:UpdateUserDto,@Req() req: FastifyRequest, @Res() reply: FastifyReply) {
-    const userSession = parseInt(req.session.get("userId"));
-    if(file !== null){
-      fields.avatar = await this.authService.uploadAvatar(file);
-    }
-    await  this.usersService.updateUser(userSession,fields);
-    return reply.status(201).send({ message: 'User profile updated successfully' });
-  }
-
-  @Patch('user/password')
-  async updatePassword(@Body() updatePasswordDto: UpdatePasswordDto,@Req() req: FastifyRequest, @Res() reply: FastifyReply) {
-    const userSession = parseInt(req.session.get("id"));
-    await this.usersService.updatePassword(userSession, updatePasswordDto);
-    return reply.status(201).send({ message: 'Password updated successfully' });
-  }
-}
-```
-In our controller we are using the `AuthService` so we need to add it to our ``users.module.ts`` providers.
-
-```ts
-import { AuthService } from 'src/auth/auth.service'; // we add this to the import
-// and inside Module decorator
-providers: [UsersService,AuthService ] // we add AuthService 
-```
-#### The Task Service
-In the task service we need four methods.
-- ``create`` create task record
-- ``findAll`` return all task that belong to user
-- ``update`` update state of a task
-- ``remove`` delete a task from the record
-```ts
-import { Injectable } from '@nestjs/common';
-import { CreateTaskDto} from './dto/create-task.dto';
-import { UpdateTaskDto } from './dto/update-task.dto';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository,UpdateResult } from 'typeorm';
-import { Task } from './entities/task.entity';
-import { User } from '../users/entities/user.entity';
-
-@Injectable()
-export class TaskService {
-   constructor(
-      @InjectRepository(Task) 
-      private taskRepository: Repository<Task>,
-      @InjectRepository(User) 
-      private userRepository: Repository<User>
-    ) {}
-    
-  async create(id:number, name: string): Promise<Task|null> {
-    const user = await this.userRepository.findOneBy({ id });
-    if(!user){
-      return  null
-    }
-    const newTask = await this.taskRepository.create({name:name,user});
-    return this.taskRepository.save(newTask );
-  }
-
-  async findAll(userId: number): Promise<Task[]> {
-    const user = await this.userRepository.findOneBy({ id: userId });
-    if (!user) {
-      throw new Error('User not found');
-    }
-    return this.taskRepository.find({ where: { user } });
-    }
-
-  async update(id: number,updateTaskDto: UpdateTaskDto ): Promise<UpdateResult>{
-    return this.taskRepository.update(id, updateTaskDto);
-  }
-
-  async remove(id: number) {
-     await this.taskRepository.delete(id);
-  }
-}
-```
-We using the User entity so we need to add it to the ``task.module.ts`` import.
-```ts
-// inside module decortor we add
-imports: [TypeOrmModule.forFeature([Task]),TypeOrmModule.forFeature([User])],  // add TypeOrmModule.forFeature([Task])
-```
-#### The Task Controller
-Finally we create the task controller. it will be protected by the `Authorized` guard, it will have the following routes.
-- `Get tasks` return all tasks that belong to the logged in user
-- `Post tasks` create new task
-- `Put tasks/:id'` update task state
-- `Delete tasks/:id'` delete task from the record
-```ts
-import { Controller, Get, Post, Body,Put ,Param, Delete,Req,Res,UseGuards } from '@nestjs/common';
-import { TaskService } from './task.service';
-import { CreateTaskDto } from './dto/create-task.dto';
-import { UpdateTaskDto } from './dto/update-task.dto';
-import type { FastifyRequest,FastifyReply } from 'fastify';
-import { Authorized } from 'src/guard/authorization.guard'
-
-@Controller('api')
-@UseGuards(Authorized)
-
-export class TaskController {
-  constructor(private readonly taskService: TaskService) {}
-
-  @Get('tasks')
-  async findAll(@Req() req: FastifyRequest,@Res() reply: FastifyReply) {
-    const userSession = parseInt(req.session.get("userId"));
-    const tasks = await this.taskService.findAll(userSession);
-    return reply.status(201).send(tasks.map(task => ({
-        id: task.id,
-        name: task.name,
-        state: task.state,
-        createdAt: task.created_at,
-      }))
-    )
- 
-  }
-  @Post('tasks')
-  async create(@Body() createTaskDto: CreateTaskDto,@Req() req: FastifyRequest,@Res() reply: FastifyReply) {
-      const userSession = parseInt(req.session.get("userId"));
-      const newTask = await this.taskService.create(userSession,createTaskDto.name);
-      if(!newTask){
-        return reply.status(401).send({ message: "Couldn't Create task" })
-      }
-     return reply.status(201).send({ message: 'Task created successfully' })
-  }
-  
-
-  @Put('tasks/:id')
-  async update(@Param('id') id: number, @Body() updateTaskDto: UpdateTaskDto,@Res() reply: FastifyReply) {
-    this.taskService.update(id, updateTaskDto);
-    return reply.status(201).send({ message: 'Task updated successfully' })
-  }
-
-  @Delete('tasks/:id')
-  async remove(@Param('id') id: number,@Res() reply: FastifyReply) {
-    this.taskService.remove(id);
-    return reply.status(201).send({ message: 'Task deleted successfully' })
-  }
-}
-```
-### Configuring The App
-Finally we configure our `main.ts` file, we set nestjs on the Fastify Adaptater, we set the validator pip and we register all our plugins.
-```ts
-import { NestFactory } from '@nestjs/core';
-import { AppModule } from './app.module';
-import { join } from 'path';
-import * as handlebars from 'handlebars';
-import { ValidationPipe } from '@nestjs/common';
-import { FastifyAdapter, NestFastifyApplication } from '@nestjs/platform-fastify';
-
-async function bootstrap() {
-  const app = await NestFactory.create<NestFastifyApplication>(
-    AppModule,
-    new FastifyAdapter(),
-  );
-
-  app.useGlobalPipes(new ValidationPipe({
-    whitelist: true,
-    forbidNonWhitelisted: true,
-    transform: true,
-  }));
-  
-  app.register(require('@fastify/view'), {
-    engine: {
-      handlebars: handlebars,
-    },
-    templates: join(__dirname, '..', 'views'), 
-  });
-
-  await app.register(require('@fastify/multipart'), {
-    limits: {
-      fileSize: 10 * 1024 * 1024,
-    },
-  });
-  await app.register(require('@fastify/static'), {
-	root: join(__dirname, '..', 'public'), 
-	prefix: '/static/', 
-  });
-  require('dotenv').config();
-  await app.register(require('@fastify/cookie'))
-  await app.register(require('@fastify/secure-session'), {
-    secret: process.env.SESSION_SECRET,
-    cookie: {
-      secure: false,       
-      httpOnly: true,      
-      sameSite: 'lax',     
-      maxAge: 15 * 60 * 1000 
-    },
-    saveUninitialized: false,
-  });
-  await app.listen(process.env.PORT ?? 3000);
-}
-bootstrap();
+    path('api/auth/', include('users_auth.urls')),
+    path('api/users/', include('users.urls')),
+    path('api/tasks/', include('tasks.urls')),
+]
 ```
 ### Creating The Interface
 Now that our API is fully functional, we need a user interface to interact with it. Instead of the server rendering HTML pages for every route, we will serve a single HTML file (Single Page Application approach) and use JavaScript to fetch data from our API and update the DOM dynamically.
 #### Serving the Entry Point
-We need to update our `app.controller` to serve the `index.html` file when a user visits the root URL.
-
-**`app.controller.ts`**
-```ts
-import { Controller, Get,Render } from '@nestjs/common';
-import { AppService } from './app.service';
-
-@Controller()
-export class AppController {
-  constructor(private readonly appService: AppService) {}
-
-  @Get()
-  @Render('index')
-  index(){
-   
-  }
-}
-
+To serve our frontend entry point (index.html) and static assets, we create a dedicated app called index. This app has a single responsibility: handling the main entry point of our application.
+```shell
+python manage.py startapp index
 ```
-Now, when you visit `http://127.0.0.1:3000/`, NestJs will serve the HTML file, and the rest of the application interaction will happen via JavaScript calling our API endpoints.
+After that we add the app to ``INSTALLED_APPS`` on our ``settings.py`` file
+```python
+INSTALLED_APPS = [
+    # other apps
+    'index',
+]
+```
+Now we create the index view inside ``views.py``, we define a simple view that returns the ``index.html`` template.  
+We use TemplateView because no backend logic is required.
+```python
+from django.views.generic import TemplateView
+
+class IndexView(TemplateView):
+    template_name = "index.html"
+```
+We create and configure `urls.py` for the index App
+```python
+from django.urls import path
+from .views import IndexView
+
+urlpatterns = [
+    path('', IndexView.as_view(), name='index'),
+]
+```
+Finally, we include the index app URLs in the main project urls.py.
+```python
+from django.contrib import admin
+from django.urls import path, include
+
+urlpatterns = [
+    path('admin/', admin.site.urls),
+
+    # API endpoints
+    path('api/auth/', include('users_auth.urls')),
+    path('api/users/', include('users.urls')),
+    path('api/tasks/', include('tasks.urls')),
+
+    # Frontend entry point
+    path('', include('index.urls')),
+]
+```
+Now, when you visit `http://127.0.0.1:8000/`, Django will serve the HTML file, and the rest of the application interaction will happen via JavaScript calling our API endpoints.
 #### The HTML and CSS
 We created a simple interface with two main sections: a Login section and a Dashboard section. Initially, the dashboard is hidden. After the user successfully logs in, the login section will be hidden, and the dashboard will be displayed.
 
-We can find the HTML template and styling files inside the ``materials`` folder. The ``index.html`` file should be moved to the ``views`` folder and the ``style.css`` file should be moved to the ``public/css`` folder.
+We can find the HTML template and styling files inside the ``materials`` folder. The ``index.html`` file should be moved to the ``templates`` folder and the ``style.css`` file should be moved to the ``static/css`` folder.
 #### Client-Side Logic (JavaScript)
 This is the most important part. The JavaScript file acts as the bridge between HTML events (such as clicks) and the Express REST API.
 
@@ -621,7 +447,7 @@ The code listens for form submissions and button clicks, then makes API calls us
 
 Helper functions handle view switching, displaying messages, and ensuring that only logged-in users can access protected sections.
 
-The file is currently in the ``materials`` folder. We should move it  to the ``public/js`` folder so it can be served as a static asset by NestJs.
+The file is currently in the ``materials`` folder. We should move it  to the ``static/js`` folder so it can be served as a static asset by Django.
 ### Token-Based Authentication 
 In the current Task Manager API, we use Secure-Session to manage authentication. This approach is effective for traditional web applications where the server and client are closely tied, and the browser handles session cookies automatically.  
 However, modern APIs often require authentication that is stateless and can be easily used by various clients (mobile apps, other servers, JavaScript frontends). This is where Token-Based Authentication comes in.
@@ -822,7 +648,7 @@ export class AppModule {}
 - limit: 100 mean max 10 requests per minute per IP.
 - storage: we set it to the `ThrottlerStorageRedisService(redis)`
 ### Configuring The Routes
-This configuration will work globally in all our application all our routes wiill have rate limit of 10 request per second, we can overwrite this, in our controller for example we can use `@SkipThrottle()` Decorator to skip and don't apply the rate limit for specific route or controller. we can also use `@Throttle(100, 1000)` Decorator to overwrite the rate limit for specific.  
+This configuration will work globally in all our application all our routes wiill have rate limit of 10 request per second, we can override this, in our controller for example we can use `@SkipThrottle()` Decorator to skip and don't apply the rate limit for specific route or controller. we can also use `@Throttle(100, 1000)` Decorator to override the rate limit for specific.  
 Example lets make the main route `/` skip the rate limit
 ```ts
 import { Controller, Get,Render } from '@nestjs/common';
