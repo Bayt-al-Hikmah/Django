@@ -13,8 +13,8 @@ class UserProfileView(APIView):
     
 class UpdateUserView(APIView):
     permission_classes = [IsAuthenticated]
-
-    def put(self, request):
+    
+    def patch(self, request):
         serializer = UpdateUserSerializer(
             instance=request.user,
             data=request.data,

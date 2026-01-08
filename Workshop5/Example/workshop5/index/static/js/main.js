@@ -44,7 +44,7 @@ document.getElementById('register-form').addEventListener('submit', async (e) =>
         formData.append('avatar', avatarFile);
     }
 
-    const response = await fetch(`${API_BASE}/register`, {
+    const response = await fetch(`${API_BASE}/auth/register/`, {
         method: 'POST',
         body: formData
     });
@@ -62,12 +62,12 @@ document.getElementById('register-form').addEventListener('submit', async (e) =>
 document.getElementById('login-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     displayMessage('login-message', 'Logging in...', false);
-    const email = document.getElementById('login-email').value;
+    const username = document.getElementById('login-username').value;
     const password = document.getElementById('login-password').value;
-    const response = await fetch(`${API_BASE}/login`, {
+    const response = await fetch(`${API_BASE}/auth/login/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password })
+        body: JSON.stringify({ username, password })
     });
     const data = await response.json();
     if (response.ok) {
@@ -97,7 +97,7 @@ function showProfile() {
     displayMessage('profile-message', '');
 }
 async function fetchUserProfile(populateForm) {
-    const response = await fetch(`${API_BASE}/user`);
+    const response = await fetch(`${API_BASE}/users/profile`);
     if (response.status === 401) {
         switchView('login-view');
         return;
@@ -122,45 +122,51 @@ async function fetchUserProfile(populateForm) {
 }
 async function updateProfile() {
     displayMessage('profile-message', 'Saving profile...', false);
+    const csrftoken = document.querySelector('[name=csrfmiddlewaretoken]').value;
     const username = document.getElementById('profile-username').value;
     const email = document.getElementById('profile-email').value;
     const formData = new FormData();
     formData.append('username', username);
     formData.append('email', email);
     const avatarFile = document.getElementById('profile-avatar').files[0];
-    console.log(avatarFile);
+
     if (avatarFile) {
         formData.append('avatar', avatarFile);
     }
 
-    const response = await fetch(`${API_BASE}/user`, {
-        method: 'PUT',
-        
+    const response = await fetch(`${API_BASE}/users/update/`, {
+        method: 'PATCH',
+         headers: { 
+            'X-CSRFToken': csrftoken,
+        },
         body: formData
     });
 
     const data = await response.json();
 
     if (response.ok) {
-        displayMessage('profile-message', data.message, false);
+        displayMessage('profile-message', "Update profile.", false);
         fetchUserProfile(true);
     } else {
-        displayMessage('profile-message', data.message || "Failed to update profile.", true);
+        displayMessage('profile-message', "Failed to update profile.", true);
     }
 }
 
 async function updatePassword() {
     displayMessage('profile-message', 'Changing password...', false);
     const password = document.getElementById('profile-password').value;
-
+    const csrftoken = document.querySelector('[name=csrfmiddlewaretoken]').value;
     if (!password) {
         displayMessage('profile-message', 'Please enter a new password.', true);
         return;
     }
 
-    const response = await fetch(`${API_BASE}/user`, {
+    const response = await fetch(`${API_BASE}/users/update-password/`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+            'Content-Type': 'application/json' ,
+            'X-CSRFToken': csrftoken,
+        },
         body: JSON.stringify({ password })
     });
 
@@ -175,7 +181,7 @@ async function updatePassword() {
 }
 
 async function fetchTasks() {
-    const response = await fetch(`${API_BASE}/tasks`);
+    const response = await fetch(`${API_BASE}/tasks/`);
     if (response.status === 401) return logout();
     const tasks = await response.json();
     const list = document.getElementById('task-list');
@@ -185,9 +191,9 @@ async function fetchTasks() {
         list.innerHTML = '<li style="justify-content: center; color: #888;">No tasks yet! Add one above.</li>';
         return;
     }
-    console.log(tasks)
+    
     tasks.forEach(task => {
-        const isDone = task.state === 'done';
+        const isDone = task.state;
         const li = document.createElement('li');
         li.className = isDone ? 'task-done' : '';
 
@@ -213,10 +219,14 @@ async function fetchTasks() {
 async function createTask() {
     const nameInput = document.getElementById('task-name');
     const name = nameInput.value.trim();
+    const csrftoken = document.querySelector('[name=csrfmiddlewaretoken]').value;
     if (!name) return;
-    await fetch(`${API_BASE}/tasks`, {
+    await fetch(`${API_BASE}/tasks/`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+            'Content-Type': 'application/json' ,
+            'X-CSRFToken': csrftoken,
+        },
         
         body: JSON.stringify({ name})
     });
@@ -226,19 +236,29 @@ async function createTask() {
 }
 
 async function updateTaskState(taskId, newState) {
-    await fetch(`${API_BASE}/tasks/${taskId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ state: newState })
+    const state = newState === "done" ? true : false;
+    const csrftoken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+    await fetch(`${API_BASE}/tasks/${taskId}/`, {
+        method: 'PATCH',
+        headers: { 
+            'Content-Type': 'application/json',
+            'X-CSRFToken': csrftoken,
+        },
+        body: JSON.stringify({ state})
     });
     fetchTasks();
 }
 
 async function deleteTask(taskId) {
+    const csrftoken = document.querySelector('[name=csrfmiddlewaretoken]').value;
     if(!confirm("Are you sure you want to delete this task?")) return;
 
-    await fetch(`${API_BASE}/tasks/${taskId}`, {
+    await fetch(`${API_BASE}/tasks/${taskId}/`, {
         method: 'DELETE',
+        headers: { 
+            'Content-Type': 'application/json',
+            'X-CSRFToken': csrftoken,
+        },
         body: JSON.stringify({id:taskId})
     });
     fetchTasks();
