@@ -117,6 +117,16 @@ We set the media folder in our `settings.py`, so we can upload files to our serv
 MEDIA_ROOT = BASE_DIR / 'media' 
 MEDIA_URL = '/media/'
 ```
+We also set the main ``urls.py`` to serve our media folder files
+```python
+# we add the following import
+from django.conf import settings
+from django.conf.urls.static import static
+
+# we add this after urlpatterns
+if settings.DEBUG:
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+```
 Finally we need to tall Django to use our costume model for authentication instead the default one, we do this in our ``settings.py`` file.
 ```python
 AUTH_USER_MODEL = 'user.UserModel'
@@ -185,7 +195,7 @@ class LoginSerializer(serializers.Serializer):
 #### Creating User Serializers
 We also need serialiers for user, it will handel updating profile data like username, email, avatar and password, lets create two class.
 - `UpdatePasswordSerializer`: inherits from Serializer class, it responsible for updating the user password.
-- `UpdateUserSerializer`: inherits from `ModelSerializer` it use the `User` model and expose the `username`, `email` and `password` fields. it use the `ModelSerializer` predifined methods to update the user data
+- `UpdateUserSerializer`: inherits from `ModelSerializer` it use the `User` model and expose the `username`, `email` and `password` fields. it use the `update` method to update the user data, for avatar we put it inside try block so if user didn't provide avatar our app wont crash
 ```python
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
@@ -204,6 +214,18 @@ class UpdateUserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = ['username', 'email', 'avatar']
+
+    def update(self, instance,validated_data):
+        
+        instance.username = validated_data['username']
+        instance.email = validated_data['email']
+        try:
+            if validated_data['avatar']:
+                instance.avatar = validated_data['avatar']
+        except:
+            pass
+        instance.save()
+        return instance
 ```
 #### Creating Task Serializers
 Finally, we create the Task serializer. This serializer is used to handle all task-related operations, such as creating new tasks, updating existing tasks, and deleting tasks.  
@@ -259,7 +281,7 @@ class LoginView(APIView):
 #### The User Views
 We also create views that allow the authenticated user to manage their profile data. These views are protected using the `IsAuthenticated` permission, which ensures that only logged-in users can access them.
 - `UserProfileView`: This class to retrive loged in user information, we use the `get` method, we retriving data using `GET` HTTP method. inside it we use `UpdateUserSerializer(request.user)` to retrive loged in user information and return them back.
-- `UpdateUserView`: This class to update the logged in user information avatar, email nd username, we used the `PUT` method.
+- `UpdateUserView`: This class to update the logged in user information avatar, email nd username, we used the `PATCH` method.
 - `UpdatePasswordView`: Finally this class update the logged in user password. we used the `PATCH` method.
 ```python
 from rest_framework.permissions import IsAuthenticated
@@ -277,8 +299,8 @@ class UserProfileView(APIView):
     
 class UpdateUserView(APIView):
     permission_classes = [IsAuthenticated]
-
-    def put(self, request):
+    
+    def patch(self, request):
         serializer = UpdateUserSerializer(
             instance=request.user,
             data=request.data,
@@ -305,7 +327,7 @@ class UpdatePasswordView(APIView):
             )
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 ```
-#### User Task Views
+#### The Task Views
 Now we create the last views, The task views. we will use ``ModelViewSet`` because it provides a complete set of CRUD operations (Create, Read, Update, Delete) for our Task model with minimal code. ModelViewSet automatically gives us all these actions (list, retrieve, create, update, partial_update, and destroy) in a single class.  
 We override the ``get_queryset()`` method to ensures that a user can only access their own tasks, by filtering tasks based on the currently authenticated user (self.request.user). 
 We also override the ``perform_create()`` method which is called when a new task is created; here, we automatically associate the task with the logged-in user. 
@@ -340,6 +362,9 @@ urlpatterns = [
     path('login/', LoginView.as_view(), name='login'),
 ]
 ```
+This willgive use the following endpoints
+- `POST register` 
+- `POST login` 
 #### Defining User `urls.py`
 Same as Before we create `urls.py` file inside our ``user`` app directory, in this directory we configure the `urlpatterns` for the user app.
 ```python
@@ -352,6 +377,10 @@ urlpatterns = [
     path('update-password/', UpdatePasswordView.as_view(), name='user-update-password'),
 ]
 ```
+This will give us the folowing endpoints:
+- `GET profile/`
+- `PATCH update/`
+- `PATCH update-password/`
 #### Defining Task `urls.py`
 Finally we define the task ``urls.py``, Since we used `ModelViewSet`, we use a router here. 
 ```python
@@ -378,15 +407,22 @@ Finally we set the main ``urls.py`` to include all our apps urlspatterns
 ```python
 from django.contrib import admin
 from django.urls import path, include
-
+from django.conf import settings
+from django.conf.urls.static import static
 urlpatterns = [
     path('admin/', admin.site.urls),
 
     path('api/auth/', include('users_auth.urls')),
-    path('api/users/', include('users.urls')),
-    path('api/tasks/', include('tasks.urls')),
+    path('api/users/', include('user.urls')),
+    path('api/tasks/', include('task.urls')),
 ]
+
+if settings.DEBUG:
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
 ```
+- The task resources are now under `api/tasks/` endpoint
+- The user resources are now under `api/users/` endpoint
+- The authentication resources are now under `api/auth/` endpoint
 ### Creating The Interface
 Now that our API is fully functional, we need a user interface to interact with it. Instead of the server rendering HTML pages for every route, we will serve a single HTML file (Single Page Application approach) and use JavaScript to fetch data from our API and update the DOM dynamically.
 #### Serving the Entry Point
@@ -401,8 +437,7 @@ INSTALLED_APPS = [
     'index',
 ]
 ```
-Now we create the index view inside ``views.py``, we define a simple view that returns the ``index.html`` template.  
-We use TemplateView because no backend logic is required.
+Now we create the index view inside ``views.py``, this view will returns the ``index.html`` template. We will just use TemplateView because no backend logic is required.
 ```python
 from django.views.generic import TemplateView
 
@@ -422,18 +457,19 @@ Finally, we include the index app URLs in the main project urls.py.
 ```python
 from django.contrib import admin
 from django.urls import path, include
-
+from django.conf import settings
+from django.conf.urls.static import static
 urlpatterns = [
     path('admin/', admin.site.urls),
 
-    # API endpoints
     path('api/auth/', include('users_auth.urls')),
-    path('api/users/', include('users.urls')),
-    path('api/tasks/', include('tasks.urls')),
-
-    # Frontend entry point
+    path('api/users/', include('user.urls')),
+    path('api/tasks/', include('task.urls')),
     path('', include('index.urls')),
 ]
+
+if settings.DEBUG:
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
 ```
 Now, when you visit `http://127.0.0.1:8000/`, Django will serve the HTML file, and the rest of the application interaction will happen via JavaScript calling our API endpoints.
 #### The HTML and CSS
@@ -443,226 +479,210 @@ We can find the HTML template and styling files inside the ``materials`` folder.
 #### Client-Side Logic (JavaScript)
 This is the most important part. The JavaScript file acts as the bridge between HTML events (such as clicks) and the Express REST API.
 
-The code listens for form submissions and button clicks, then makes API calls using fetch to the corresponding endpoints. For example, when a user logs in, it sends a POST request to ``/api/login``, stores the session, and updates the view to display the user’s tasks. Similarly, task actions like creating, updating, or deleting a task are sent to the ``/api/tasks`` endpoints, and the page updates dynamically without reloading.
+The code listens for form submissions and button clicks, then makes API calls using fetch to the corresponding endpoints. For example, when a user logs in, it sends a POST request to ``/api/auth/login``, stores the session, and updates the view to display the user’s tasks. Similarly, task actions like creating, updating, or deleting a task are sent to the ``/api/tasks`` endpoints, and the page updates dynamically without reloading.
 
 Helper functions handle view switching, displaying messages, and ensuring that only logged-in users can access protected sections.
 
 The file is currently in the ``materials`` folder. We should move it  to the ``static/js`` folder so it can be served as a static asset by Django.
 ### Token-Based Authentication 
-In the current Task Manager API, we use Secure-Session to manage authentication. This approach is effective for traditional web applications where the server and client are closely tied, and the browser handles session cookies automatically.  
+In the current Task Manager API, we use session to manage authentication. This approach is effective for traditional web applications where the server and client are closely tied, and the browser handles session cookies automatically.  
 However, modern APIs often require authentication that is stateless and can be easily used by various clients (mobile apps, other servers, JavaScript frontends). This is where Token-Based Authentication comes in.
 #### How Tokens Work
-Instead of the server storing session data for every user (stateful), the server issues a secure, self-contained token (like a JSON Web Token or JWT) upon successful login.
-1. **Client Logs In:** The user sends credentials (username/password) to the `/api/login` endpoint.
-2. **Server Generates Token:** If successful, the server creates a unique token containing the user's ID, expiration time, and a secure signature. The token is returned in the response.
-3. **Client Stores Token:** The frontend (e.g., JavaScript) stores this token (usually in local storage).
-4. **API Access:** For every subsequent request to protected endpoints (e.g., `/api/tasks`), the client includes this token in the `Authorization` header, typically prefixed with `Bearer`.
-5. **Server Verification:** The server receives the request, verifies the token's signature, extracts the user ID, and grants access. No database lookup for a session is required, making the API stateless and faster.
+Instead of the server storing session data for every user (stateful), the server issues a secure, self-contained token like a JSON Web Token or JWT upon successful login.
+1. Client Logs In: The user sends credentials (username/password) to the `/api/auth/login/` endpoint.
+2. Server Generates Token: If user successfuly loged in, the server creates a unique token containing the user's ID, expiration time, and a secure signature, and token return it in the response.
+3. Client Stores Token: The frontend stores this token .
+4. API Access: For every subsequent request to protected endpoints (e.g., `/api/tasks`), the client includes this token in the `Authorization` header, typically prefixed with `Bearer`.
+5. Server Verification: The server receives the request, verifies the token's signature, extracts the user ID, and grants access. No database lookup for a session is required, making the API stateless and faster.
 ### Implementing Token Authentication with NestJs
-We use the `@nestjs/jwt` and ``@nestjs/passport`` to impliment the Token Authentication.
+We use the `JWT` to impliment the Token Authentication.
 
 First, we install it using:
 ```shell
-npm install @nestjs/jwt @nestjs/passport passport passport-jwt
+pip install djangorestframework-simplejwt
 ```
 #### Setting the JWT Token
-We set the auth module to apply the JWT Authentication. and we add `JwtStrategy` to our providers
-```ts
-// we add this to the import
-import { JwtModule } from '@nestjs/jwt';
-import { PassportModule } from '@nestjs/passport';
-import { JwtStrategy } from './jwt.strategy';
-require('dotenv').config(); // load env variable
-// And inside Module decorator imports we add 
-imports: [
-    PassportModule,
-    JwtModule.register({
-      secret: process.env.JWT_SECRET,
-      signOptions: { expiresIn: '1h' },
-    }),// other imports
-  ], 
-
-providers: [AuthService,JwtStrategy],
-```
-- secret is used to sign and verify JWT tokens
-- expiresIn defines token lifetime
-#### Creating the JWT Strategy
-After that we create The JWT Streategy,it is responsible for verifying incoming tokens.  
-**``auth\jwt.strategy.ts``**
-```ts
-import { Injectable } from '@nestjs/common';
-import { PassportStrategy } from '@nestjs/passport';
-import { ExtractJwt, Strategy } from 'passport-jwt';
-
-@Injectable()
-export class JwtStrategy extends PassportStrategy(Strategy) {
-  constructor() {
-    super({
-      jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
-      secretOrKey: process.env.JWT_SECRET,
-    });
-  }
-
-  async validate(payload: any) {
-    return payload;
-  }
+After that we add the JWT configuration to our `settings.py` file.
+```python
+from datetime import timedelta
+REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': (
+        'rest_framework_simplejwt.authentication.JWTAuthentication',
+    ),
+    'DEFAULT_PERMISSION_CLASSES': (
+        'rest_framework.permissions.IsAuthenticated',
+    ),
+}
+SIMPLE_JWT = {
+    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=30),
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=1),
+    'AUTH_HEADER_TYPES': ('Bearer',),  # Authorization: Bearer <token>
 }
 ```
-This Strategy extract the token from the ``Authorization`` header,verify it then the decoded payload is attached to `request.user`.
-#### Editing The Guard 
-Now we not using session we need to edit our guards to apply the JWT Authentication
-```ts
-import { Injectable } from '@nestjs/common';
-import { AuthGuard } from '@nestjs/passport';
+`REST_FRAMEWORK`: Represent the basic configuration for our REST framework , we set authentication class to `rest_framework_simplejwt.authentication.JWTAuthentication` so we will use our `djangorestframework-simplejwt` package,and weset the permission class to `rest_framework.permissions.IsAuthenticated`.
+- `SIMPLE_JWT`: With this we configure our token, Access Token take 30 minutes to expire, nad the refresh token take one day, finally our token will be sent under `Bearer` header.
+#### Editing Auth App
+Now we edit out auth app serializers, and view. For login we will use the built in functionality so we delete the login serializers and view. For registration we add permission to the view so it wont apply the JWT authentication and user can still access this endpoint.
+```python
+from rest_framework.permissions import AllowAny # Import this
 
-@Injectable()
-export class Authorized  extends AuthGuard('jwt') {}
+class RegisterView(APIView):
+    permission_classes = [AllowAny] # add this
 ```
-We now need only one guard, the Authorized it extand the `AuthGuard` and implement the `jwt`. we remove the guard from the `auth.controller`.
-#### Editing the Controller
-Finally we need to edit our controllers, we start by editing the login controller instead of saving userId in session, we generat and return token.
-```ts
-import { Controller, Post, Body, Req,Res,UseGuards} from '@nestjs/common';
-import { AuthService } from './auth.service';
-import { CreateUserDto,LoginDto } from '../users/dto/create-user.dto';
-import type { FastifyRequest,FastifyReply } from 'fastify';
-import { File } from 'src/parameter_decorators/parameter.decorator.file'
-import { Fields } from 'src/parameter_decorators/parameter.decorator.fields'
-import type { MultipartFile} from '@fastify/multipart';
-import { JwtService } from '@nestjs/jwt';
-@Controller('api')
+Finally we edit the ``urls.py`` to apply the default login view, we also add refresh view to retrive our token when they get expired.
+```python
+from django.urls import path
+from .views import RegisterView
+from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
-export class AuthController {
-  constructor(private readonly authService: AuthService,
-    private jwtService: JwtService
-  ) {}
-  @Post('register')
-  async register(@File() file:MultipartFile,@Fields() fields:CreateUserDto,@Res() res:FastifyReply) {
-    const filename:string = await this.authService.uploadAvatar(file);
-    fields.avatar = filename
-    await this.authService.register(fields);
-    return res.status(201).send({ message: 'Registred' });
-  }
-  @Post('login')
-  async create(@Body() loginDto: LoginDto, @Req() req: FastifyRequest,@Res() res:FastifyReply) { 
-    const user = await this.authService.login(loginDto);
-    if(!user){
-    return res.status(401).send({ message: 'Invalid credentials' });
-    }
-    const payload = {
-      userId:user.id,
-      email:user.email
-    }
-    return res.status(201).send({ message: 'logged in' ,access_token:this.jwtService.sign(payload)});
-  } 
-}
+urlpatterns = [
+    path('register/', RegisterView.as_view(), name='register'),
+    path('login/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
+    path('refresh/', TokenRefreshView.as_view(), name='token_refresh'),
+]
 ```
-We import `JwtService` add it to our ``AuthController``, then generate the token using the `sing` method.
-Finally we edit our tasks and users controller we replace `req.session.get("userId")` with `req.user.userId`. We Also remove the `FastifyRequest` type from the `@Req() req`.
 #### Editing the Javascript
-Now we update our JavaScript to work with JWT authentication. When a user logs in, the backend returns a token, which we store in the browser using:
+Now we update our JavaScript to work with JWT authentication. When a user logs in, the backend returns a refresh and access token, which we store in the browser using:
 ```javascript
-localStorage.setItem('token', data.access_token);
+localStorage.setItem('access', data.access);
+localStorage.setItem('refresh', data.refresh);
 ```
-For every subsequent API request, we need to include this token in the **Authorization header** so the backend can verify the user. This is done by adding:
+For every subsequent API request, we need to include this token in the Authorization header so the backend can verify the user. This is done by adding:
 ```js
-'Authorization': `Bearer ${localStorage.getItem('token')}` 
+'Authorization': `Bearer ${localStorage.getItem('access')}` 
 ```
-to the headers of each `fetch` request. This ensures that only authenticated users can access protected endpoints.
+to the headers of each `fetch` request. This ensures that only authenticated users can access protected endpoints.  
+Finally we acn also create additional function to fetch the access token when they get expired.
+```js
+async function refreshToken() {
+    const refresh = localStorage.getItem('refresh');
+
+    const response = await fetch(`${API_BASE}/auth/refresh/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refresh })
+    });
+
+    const data = await response.json();
+    if (response.ok) {
+        localStorage.setItem('access', data.access);
+        return true;
+    }
+    return false;
+}
+```
+We can call this this function any time we recive status code of `401`, it set the access token using the refresh token, and return ``true`` if the refresh token still valide and it could set the token, else if the refresh token got expired it return ``false`` and here we just tell user to login again.     
+Finally we run and apply the migration so the JWT and it configuration will work on our app
+```shell
+python manage.py makemigrations
+python manage.py migrate
+```
+Now we can start start our server and see if everything work as expected  
+```shell
+python manage.py runserver
+```
 ### API Rate Limiting
 As our API gains more users, we need to protect it from abuse, excessive load, and denial-of-service (DoS) attacks. Rate Limiting is the practice of restricting the number of API requests a user (or IP address) can make within a specific time window.
 
 #### Implementing Rate Limiting
-To protect our NestJs application from abuse and excessive requests, we implement rate limiting. Rate limiting helps prevent brute-force attacks, reduces server load, and improves overall API reliability.  
-In NestJs, the most common and recommended solution is the **`@nestjs/throttler`**,We start by installing it using:
-```
-npm install @nestjs/throttler
-```
-#### Installing Redis
-Redis (Remote Dictionary Server) is a very fast, in-memory data store. It is commonly used for caching, sessions, queues, and rate limiting. Because Redis stores data in memory, it is significantly faster than traditional databases, making it ideal for tracking API requests in real time.  
-Redis is used with rate limiting plugin to persist rate-limit data. This allows rate limits to remain consistent even if the server restarts or runs across multiple instances.  
-We install it as following
+Rate limiting helps prevent brute-force attacks, reduces server load, and improves overall API reliability.
+In Django REST Framework (DRF), rate limiting is implemented using throttling, which is built directly into DRF.   
+DRF provides several built-in throttle classes, such as:
 
-- Ubuntu / Debian:
+- AnonRateThrottle (for unauthenticated users)
+- UserRateThrottle (for authenticated users)
+- ScopedRateThrottle (for per-endpoint limits)
 
-```
+### Installing Redis 
+By default, Django uses an in-memory cache for throttling, which is not suitable for production or multi-instance deployments.    
+To make rate limiting reliable and persistent, we use Redis as a cache backend.  
+Redis (Remote Dictionary Server) is a fast, in-memory data store commonly used for caching, sessions, queues, and rate limiting. Because Redis stores data in memory, it is ideal for tracking API requests in real time.
+
+- **Ubuntu / Debian**
+```shell
 sudo apt update
 sudo apt install redis-server
 sudo systemctl enable redis-server
 sudo systemctl start redis-server
 ```
 
-- macOS (Homebrew):
-
-```
+- **macOS (Homebrew)**
+```shell
 brew install redis
 brew services start redis
 ```
-
-- Windows Redis is not officially supported on Windows, but we can use **Redis for Windows** provided by the community [Redis for Windows](https://github.com/tporadowski/redis/releases).
-
-After that we install the redis package
+- **Windows**  
+    Redis is not officially supported on Windows, but you can use **Redis for Windows** provided by the community:  
+    [https://github.com/tporadowski/redis/releases](https://github.com/tporadowski/redis/releases)
+#### Installing Redis Client for Django
+We also need to  install Django’s Redis cache backend:
+```shell
+pip install django-redis
 ```
-npm install  @nest-lab/throttler-storage-redis ioredis
-```
-#### Create Redis Client
-Now we need to create a Redis connection. 
-**`src/redis/redis.client.ts`** 
-```ts
-import Redis from 'ioredis';
-
-export const redis = new Redis({
-  host: process.env.REDIS_HOST,
-  port: Number(process.env.REDIS_PORT),
-});
-```
-#### Configure Throttler with Redis Storage
-After creating our redis client, we update ``app.module.ts`` to use  Throttler with redis as storage
-```ts
-// we add this to the import
-import { ThrottlerModule } from '@nestjs/throttler';
-import { APP_GUARD } from '@nestjs/core';
-import { ThrottlerGuard } from '@nestjs/throttler';
-import {redis } from 'src/redis/redis.client'
-
-@Module({
-  imports: [
-     ThrottlerModule.forRoot({
-      throttlers:[{
-      ttl: 60,
-      limit: 100,
-    }],
-    storage: new ThrottlerStorageRedisService(redis) // setting storage to redis
-    }),// other imports
-  ], 
-  providers: [
-    {
-      provide: APP_GUARD,
-      useClass: ThrottlerGuard,
-    },// other providers
-  ],
-})
-export class AppModule {}
-```
-- ttl: 60000  time window in mini seconds here we set it to 60000 which mean one minute.
-- limit: 100 mean max 10 requests per minute per IP.
-- storage: we set it to the `ThrottlerStorageRedisService(redis)`
-### Configuring The Routes
-This configuration will work globally in all our application all our routes wiill have rate limit of 10 request per second, we can override this, in our controller for example we can use `@SkipThrottle()` Decorator to skip and don't apply the rate limit for specific route or controller. we can also use `@Throttle(100, 1000)` Decorator to override the rate limit for specific.  
-Example lets make the main route `/` skip the rate limit
-```ts
-import { Controller, Get,Render } from '@nestjs/common';
-import { AppService } from './app.service';
-import { SkipThrottle } from '@nestjs/throttler';
-
-@SkipThrottle()
-@Controller()
-export class AppController {
-  constructor(private readonly appService: AppService) {}
-  @Get()
-  @Render('index')
-  index(){
-  }
+#### Configuring Redis Cache
+Finally in `settings.py`, we configure Redis as the default cache backend:
+```python
+CACHES = {
+    "default": {
+        "BACKEND": "django_redis.cache.RedisCache",
+        "LOCATION": "redis://127.0.0.1:6379/1",
+        "OPTIONS": {
+            "CLIENT_CLASS": "django_redis.client.DefaultClient",
+        }
+    }
 }
 ```
-Now the rate limit wont work on this Controller.  
+With this setup, rate-limit data is stored in Redis, ensuring consistency across server restarts and multiple instances.
+### Enabling The Rate limit
+Now we need to configure our rate limit inside the ``settings.py`` file, For our app we will use the default rate limit `anon` and ``user``, and we also create costume rate limit for out tasks endpoint.
+```python
+REST_FRAMEWORK = {
+
+    # Other settings ..
+    # we add this
+    'DEFAULT_THROTTLE_CLASSES': [
+        'rest_framework.throttling.AnonRateThrottle',
+        'rest_framework.throttling.UserRateThrottle',
+    ],
+    'DEFAULT_THROTTLE_RATES': {
+        'anon': '10/min',     # unauthenticated users
+        'user': '100/min',    # authenticated users
+        'tasks': '200/min',   # tasks endpoint rate limit
+    },
+}
+```
+- `anon`: limits requests from unauthenticated users (usually by IP address), it will use the `rest_framework.throttling.AnonRateThrottle` class.
+- `user`: limits requests from authenticated users (identified by user ID when using JWT), it will use `rest_framework.throttling.UserRateThrottle` class.
+- `tasks`: limits represent for the tasks endpoint, it will need a costume `THROTTLE` class.
+
+After that we create our costume throller class, inside it we define the score which tell django which rate limit configuration it will use here we set it to `tasks`, that mean it will be the `200/min` rate limit. 
+```python
+from rest_framework.throttling import UserRateThrottle
+
+class TaskRateThrottle(UserRateThrottle):
+    scope = 'tasks'
+```
+#### Adding the rate limit
+The ``anon`` and ``user`` rate limit applied automaticly to all our endpoints. if we want to To disable throttling for a specific endpoint, we can override the ``throttle_classes`` attribute to empty list:
+```python
+    throttle_classes = []
+```
+Finally to apply the costume ``tasks`` rate limit to our ``task`` views, we do that by setting the `throttle_classes` proprety to our costume throller class.
+```python
+from rest_framework.viewsets import ModelViewSet
+from rest_framework.permissions import IsAuthenticated
+from .models import Task
+from .serializers import TaskSerializer
+from TaskRateThrottle import TaskRateThrottle
+
+
+class TaskViewSet(ModelViewSet):
+    serializer_class = TaskSerializer
+    permission_classes = [IsAuthenticated]
+    throttle_classes = [TaskRateThrottle]
+    def get_queryset(self):
+        return Task.objects.filter(user=self.request.user)
+
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)
+```

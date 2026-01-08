@@ -1,3 +1,4 @@
+
 const API_BASE = '/api';
 function switchView(viewId) {
     document.getElementById('login-view').style.display = 'none';
@@ -70,8 +71,6 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
     });
     const data = await response.json();
     if (response.ok) {
-        localStorage.setItem('access', data.access);
-        localStorage.setItem('refresh', data.refresh);
         displayMessage('login-message', data.message, false);
         document.getElementById('login-form').reset();
         switchView('app-view');
@@ -98,12 +97,7 @@ function showProfile() {
     displayMessage('profile-message', '');
 }
 async function fetchUserProfile(populateForm) {
-    const response = await fetch(`${API_BASE}/users/profile`,{
-        headers:{
-            'Authorization': `Bearer ${localStorage.getItem('access')}` 
-        }
-    }
-    );
+    const response = await fetch(`${API_BASE}/users/profile`);
     if (response.status === 401) {
         switchView('login-view');
         return;
@@ -122,15 +116,13 @@ async function fetchUserProfile(populateForm) {
             document.getElementById('profile-email').value = user.email;
             document.getElementById('avatar-preview').src = avatarUrl;
         }
-    } else if(await refreshToken()){
-        fetchUserProfile(populateForm);
-    }
-    else {
+    } else {
         switchView('login-view');
     }
 }
 async function updateProfile() {
     displayMessage('profile-message', 'Saving profile...', false);
+    const csrftoken = document.querySelector('[name=csrfmiddlewaretoken]').value;
     const username = document.getElementById('profile-username').value;
     const email = document.getElementById('profile-email').value;
     const formData = new FormData();
@@ -145,7 +137,7 @@ async function updateProfile() {
     const response = await fetch(`${API_BASE}/users/update/`, {
         method: 'PATCH',
          headers: { 
-            'Authorization': `Bearer ${localStorage.getItem('access')}` 
+            'X-CSRFToken': csrftoken,
         },
         body: formData
     });
@@ -155,18 +147,15 @@ async function updateProfile() {
     if (response.ok) {
         displayMessage('profile-message', "Update profile.", false);
         fetchUserProfile(true);
-    } else if(await refreshToken()){
-        updateProfile();
-    }
-    else {
+    } else {
         displayMessage('profile-message', "Failed to update profile.", true);
-        setTimeout(1000,()=>{switchView('login-view');})
     }
 }
 
 async function updatePassword() {
     displayMessage('profile-message', 'Changing password...', false);
     const password = document.getElementById('profile-password').value;
+    const csrftoken = document.querySelector('[name=csrfmiddlewaretoken]').value;
     if (!password) {
         displayMessage('profile-message', 'Please enter a new password.', true);
         return;
@@ -176,7 +165,7 @@ async function updatePassword() {
         method: 'PATCH',
         headers: { 
             'Content-Type': 'application/json' ,
-            'Authorization': `Bearer ${localStorage.getItem('access')}` 
+            'X-CSRFToken': csrftoken,
         },
         body: JSON.stringify({ password })
     });
@@ -186,22 +175,14 @@ async function updatePassword() {
     if (response.ok) {
         displayMessage('profile-message', data.message, false);
         document.getElementById('profile-password').value = ''; // Clear field
-    } 
-    else if(await refreshToken()){
-        updatePassword();
-    }else {
+    } else {
         displayMessage('profile-message', data.message || "Failed to change password.", true);
-        setTimeout(1000,()=>{switchView('login-view');})
     }
 }
 
 async function fetchTasks() {
-    const response = await fetch(`${API_BASE}/tasks/`,{
-        headers:{
-            'Authorization': `Bearer ${localStorage.getItem('access')}` 
-        }
-    });
-    if (response.ok ){
+    const response = await fetch(`${API_BASE}/tasks/`);
+    if (response.status === 401) return logout();
     const tasks = await response.json();
     const list = document.getElementById('task-list');
     list.innerHTML = '';
@@ -233,102 +214,52 @@ async function fetchTasks() {
         li.appendChild(deleteBtn);
         list.appendChild(li);
     });
-    } else if (await refreshToken()){
-        fetchTasks()
-    }
-    else{
-        setTimeout(500,()=>{switchView('login-view');})
-    }
-    
 }
 
 async function createTask() {
     const nameInput = document.getElementById('task-name');
     const name = nameInput.value.trim();
+    const csrftoken = document.querySelector('[name=csrfmiddlewaretoken]').value;
     if (!name) return;
-    const response = await fetch(`${API_BASE}/tasks/`, {
+    await fetch(`${API_BASE}/tasks/`, {
         method: 'POST',
         headers: { 
             'Content-Type': 'application/json' ,
-            'Authorization': `Bearer ${localStorage.getItem('access')}` 
+            'X-CSRFToken': csrftoken,
         },
         
         body: JSON.stringify({ name})
     });
-    if (response.ok ){
-        displayMessage('profile-message', "Task Created", true);
-        nameInput.value = '';
-        fetchTasks();
-    }else if (await refreshToken()){
-        createTask() 
-    }
-    else{
-        displayMessage('profile-message', "Token Expired", true);
-        setTimeout(1000,()=>{switchView('login-view');})
-    }
-   
+
+    nameInput.value = '';
+    fetchTasks();
 }
 
 async function updateTaskState(taskId, newState) {
     const state = newState === "done" ? true : false;
-    const response = await fetch(`${API_BASE}/tasks/${taskId}/`, {
+    const csrftoken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+    await fetch(`${API_BASE}/tasks/${taskId}/`, {
         method: 'PATCH',
         headers: { 
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${localStorage.getItem('access')}`
+            'X-CSRFToken': csrftoken,
         },
         body: JSON.stringify({ state})
     });
-    if (response.ok ){
-        displayMessage('profile-message', "Task Updated", true);
-        fetchTasks();
-    }else if (await refreshToken()){
-        updateTaskState(taskId, newState);
-    }
-    else{
-        displayMessage('profile-message', "Token Expired", true);
-        setTimeout(1000,()=>{switchView('login-view');})
-    }
+    fetchTasks();
 }
 
 async function deleteTask(taskId) {
-   
+    const csrftoken = document.querySelector('[name=csrfmiddlewaretoken]').value;
     if(!confirm("Are you sure you want to delete this task?")) return;
 
-    const response = await fetch(`${API_BASE}/tasks/${taskId}/`, {
+    await fetch(`${API_BASE}/tasks/${taskId}/`, {
         method: 'DELETE',
         headers: { 
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${localStorage.getItem('access')}` 
+            'X-CSRFToken': csrftoken,
         },
         body: JSON.stringify({id:taskId})
     });
-
-    if (response.ok ){
-        displayMessage('profile-message', "Task Deleted", true);
-        fetchTasks();
-    }else if (await refreshToken()){
-        deleteTask(taskId);
-    }
-    else{
-        displayMessage('profile-message', "Token Expired", true);
-        setTimeout(1000,()=>{switchView('login-view');})
-    }
-}
-
-async function refreshToken() {
-    const refresh = localStorage.getItem('refresh');
-
-    const response = await fetch(`${API_BASE}/auth/refresh/`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ refresh })
-    });
-
-    const data = await response.json();
-    if (response.ok) {
-        localStorage.setItem('access', data.access);
-        return true;
-    }
-    return false;
+    fetchTasks();
 }
