@@ -667,7 +667,7 @@ The ``anon`` and ``user`` rate limit applied automaticly to all our endpoints. i
 ```python
     throttle_classes = []
 ```
-Finally to apply the costume ``tasks`` rate limit to our ``task`` views, we do that by setting the `throttle_classes` proprety to our costume throller class.
+Finally to apply the costume ``tasks`` rate limit to our ``task`` views, we set the `throttle_classes` proprety inside out view class to `[TaskRateThrottle]`.
 ```python
 from rest_framework.viewsets import ModelViewSet
 from rest_framework.permissions import IsAuthenticated
