@@ -690,7 +690,7 @@ class TaskViewSet(ModelViewSet):
 #### Query Parameters
 Somtimes we need to apply filters in our data, for example make user able to search task by name, for that we can use the query parameters, we can access them inside our views by using `self.request.query_params.get('name')` where name is the name of the parameter we want to access. 
 #### Pagination
-Finally pagination, is the are of dividing our data into chunks instead of getting all the data from our database we can access chunck by chunk, for example we load first 10 tasks then by clicking next we load the next 10 tasks.  
+Pagination is the process of dividing data into chunks instead of returning all records at once, This improves performance and makes APIs easier to consume, For example, instead of returning all tasks, we return 10 tasks per request, and the client can load more by navigating between pages.
 We apply pagination by using the built-in class, first we configure it inside our ``settings.py``
 ```python
 REST_FRAMEWORK = {
