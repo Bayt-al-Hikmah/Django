@@ -703,8 +703,8 @@ This is the basic configurtion we set the pagination class to `rest_framework.pa
 ```json
 {
   "count": 125,
-  "next": "http://api/books/?page=4",
-  "previous": "http://api/books/?page=2",
+  "next": "http://api/tasks/?page=4",
+  "previous": "http://api/tasks/?page=2",
   "results": [
     ...
   ]
@@ -725,10 +725,31 @@ REST_FRAMEWORK = {
 The result will be 
 ```json
 {
-  "next": "http://api/posts/?cursor=cD0yMDI1LTEw",
+  "next": "http://api/tasks/?cursor=cD0yMDI1LTEw",
   "previous": null,
   "results": [
   // ....
   ]
 }
 ```
+We also have `rest_framework.pagination.LimitOffsetPagination` class which use offset and limit to retrive data `GET /api/tasks/?limit=10&offset=20` where offset represent where to start from, and limit represent how many records to return, first we configure it in our ``settings.py``
+```python
+REST_FRAMEWORK = {
+    # other configuration
+    'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.LimitOffsetPagination',
+    'PAGE_SIZE': 10,
+}
+```
+`PAGE_SIZE` acts as the default limit, the client can override it using ``?limit=``, the result will be as following.
+```json
+{
+  "count": 125,
+  "next": "http://api/tasks/?limit=10&offset=30",
+  "previous": "http://api/tasks/?limit=10&offset=10",
+  "results": [
+    // 10 tasks objects
+  ]
+}
+```
+#### Disable Pagination 
+When we add the pagination, Django apply it on all our routes, we can disable it for specific view by override the `pagination_class` property and set it to `None`.
