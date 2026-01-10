@@ -686,3 +686,49 @@ class TaskViewSet(ModelViewSet):
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
 ```
+### Query Parameters and Pagination
+#### Query Parameters
+Somtimes we need to apply filters in our data, for example make user able to search task by name, for that we can use the query parameters, we can access them inside our views by using `self.request.query_params.get('name')` where name is the name of the parameter we want to access. 
+#### Pagination
+Finally pagination, is the are of dividing our data into chunks instead of getting all the data from our database we can access chunck by chunk, for example we load first 10 tasks then by clicking next we load the next 10 tasks.  
+We apply pagination by using the built-in class, first we configure it inside our ``settings.py``
+```python
+REST_FRAMEWORK = {
+    # Other setting
+    'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
+    'PAGE_SIZE': 10,
+}
+```
+This is the basic configurtion we set the pagination class to `rest_framework.pagination.PageNumberPagination` and page size to 10 element, now we access pages by adding `/?page=` query parameter in our url where the first page is `/?page=1`. The response will structured as following.
+```json
+{
+  "count": 125,
+  "next": "http://api/books/?page=4",
+  "previous": "http://api/books/?page=2",
+  "results": [
+    ...
+  ]
+}
+```
+- `result` is the data we requesting.
+- `next` represent the next page, if we in te last page, it will be null.
+- `previous` represent the previous page, if we in the first page, it wll be null.
+
+There is other classes for pagination, for example the 'rest_framework.pagination.CursorPagination' where instead of using page number we use a cursor and size of data we want to retrive after the cursor.
+```python
+REST_FRAMEWORK = {
+    # other configurtion
+    'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.CursorPagination',
+    'PAGE_SIZE': 10,
+}
+```
+The result will be 
+```json
+{
+  "next": "http://api/posts/?cursor=cD0yMDI1LTEw",
+  "previous": null,
+  "results": [
+  // ....
+  ]
+}
+```
